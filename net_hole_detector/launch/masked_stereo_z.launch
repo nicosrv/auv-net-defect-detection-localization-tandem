@@ -1,0 +1,44 @@
+<launch>
+    <node pkg="net_hole_detector"
+          type="stereo_distance_estimator.py"
+          name="stereo_distance_estimator"
+          output="screen">
+
+        <param name="disparity_topic" value="/masked_stereo/disparity"/>
+
+        <param name="left_mask_topic" value="/net_hole_detector/stereo_left/hole_mask"/>
+        <param name="right_mask_topic" value="/net_hole_detector/stereo_right/hole_mask"/>
+
+        <param name="bbox_topic" value="/net_hole_detector/stereo_left/bounding_boxes"/>
+        <param name="camera_info_topic" value="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
+
+        <param name="baseline_fallback" value="0.10"/>
+
+        <param name="min_bbox_score" value="0.20"/>
+        <param name="min_points" value="20"/>
+
+        <param name="dilation_kernel_size" value="63"/>
+        <param name="dilation_iterations" value="3"/>
+        <param name="inner_exclusion_kernel" value="15"/>
+
+        <param name="bbox_expand" value="1.8"/>
+
+        <param name="z_min_valid" value="0.15"/>
+        <param name="z_max_valid" value="8.0"/>
+
+        <param name="min_valid_disparity" value="0.5"/>
+        <param name="max_valid_disparity" value="250.0"/>
+
+        <param name="prior_tolerance_px" value="3.0"/>
+        <param name="min_prior_points" value="9999"/>
+
+        <param name="disp_bin_width" value="1.0"/>
+        <param name="min_peak_points" value="3"/>
+
+        <param name="use_prior_fallback" value="true"/>
+
+        <param name="max_temporal_jump" value="0.45"/>
+        <param name="history_timeout" value="3.0"/>
+
+    </node>
+</launch>

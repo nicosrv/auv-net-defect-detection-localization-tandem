@@ -1,0 +1,41 @@
+<launch>
+  <node name="vertical_inspector" pkg="tandem" type="ri.py" output="screen">
+
+      <param name="inspection_width" value="5.0" />
+      <param name="inspection_depth" value="3.0" />
+      <param name="step_down_z" value="0.5" />
+      <param name="start_z" value="0.5" />
+
+      <!-- Límites de velocidad -->
+      <param name="vy_max" value="0.07" />
+      <param name="vz_max" value="0.07" />
+
+      <!-- Visual servoing -->
+      <param name="bbox_topic" value="/net_hole_detector/stereo_left/bounding_boxes" />
+      <param name="bbox_timeout" value="1.0" />
+
+      <!-- Permite entrar en APPROACH_HOLE con detección 2D aunque todavía no haya Z 3D -->
+      <param name="enable_visual_only_approach" value="true" />
+      <param name="req_visual_detections" value="3" />
+      <param name="visual_detection_timeout" value="2.0" />
+      <param name="visual_min_bbox_score" value="0.20" />
+
+      <!-- Tolerancias de centrado en imagen normalizada -->
+      <param name="visual_tol_x" value="0.08" />
+      <param name="visual_tol_y" value="0.08" />
+
+      <!-- Ganancias visuales -->
+      <param name="kp_visual_y" value="0.12" />
+      <param name="kp_visual_z" value="0.25" />
+
+      <!-- 
+      +1.0: si el agujero aparece a la derecha, manda vy positivo.
+      Si ves que se aleja del centro en vez de acercarse, cambia a -1.0.
+      -->
+      <param name="visual_y_sign" value="1.0" />
+
+      <!-- Solo avanza si además de estar centrado visualmente mantiene yaw frontal -->
+      <param name="require_yaw_centered_for_forward" value="true" />
+
+  </node>
+</launch>

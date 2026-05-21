@@ -1,0 +1,43 @@
+<launch>
+    <arg name="fastsam_weights" default="$(find net_hole_detector)/weights/FastSAM-s.pt"/>
+
+    <!-- FastSAM izquierda -->
+    <node pkg="net_hole_detector"
+          type="hole_segmenter_fastsam.py"
+          name="hole_segmenter_fastsam_left"
+          output="screen">
+
+        <env name="LD_PRELOAD" value="/lib/x86_64-linux-gnu/libffi.so.7"/>
+
+        <param name="image_topic" value="/stereo/left/image_rect_color"/>
+        <param name="bbox_topic" value="/net_hole_detector/stereo_left/bounding_boxes"/>
+        <param name="mask_topic" value="/net_hole_detector/stereo_left/hole_mask"/>
+        <param name="debug_topic" value="/net_hole_detector/stereo_left/hole_mask_debug"/>
+        <param name="fastsam_weights" value="$(arg fastsam_weights)"/>
+
+        <param name="conf" value="0.4"/>
+        <param name="iou" value="0.9"/>
+        <param name="imgsz" value="640"/>
+        <param name="period" value="0.2"/>
+    </node>
+
+    <!-- FastSAM derecha -->
+    <node pkg="net_hole_detector"
+          type="hole_segmenter_fastsam.py"
+          name="hole_segmenter_fastsam_right"
+          output="screen">
+
+        <env name="LD_PRELOAD" value="/lib/x86_64-linux-gnu/libffi.so.7"/>
+
+        <param name="image_topic" value="/stereo/right/image_rect_color"/>
+        <param name="bbox_topic" value="/net_hole_detector/stereo_right/bounding_boxes"/>
+        <param name="mask_topic" value="/net_hole_detector/stereo_right/hole_mask"/>
+        <param name="debug_topic" value="/net_hole_detector/stereo_right/hole_mask_debug"/>
+        <param name="fastsam_weights" value="$(arg fastsam_weights)"/>
+
+        <param name="conf" value="0.4"/>
+        <param name="iou" value="0.9"/>
+        <param name="imgsz" value="640"/>
+        <param name="period" value="0.2"/>
+    </node>
+</launch>

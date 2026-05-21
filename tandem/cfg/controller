@@ -1,0 +1,43 @@
+!!python/object/new:dynamic_reconfigure.encoding.Config
+dictitems:
+  alpha_filter: 0.3
+  groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+    dictitems:
+      alpha_filter: 0.3
+      groups: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      id: 0
+      int_y_limit: 0.2
+      int_z_limit: 0.2
+      kd_y: 0.0
+      kd_z: 0.0
+      ki_y: 0.0
+      ki_z: 0.185
+      kp_y: 0.2
+      kp_z: 0.335
+      max_dv: 0.1
+      name: Default
+      parameters: !!python/object/new:dynamic_reconfigure.encoding.Config
+        state: []
+      parent: 0
+      state: true
+      tol_y: 0.02
+      tol_z: 0.2
+      type: ''
+      vy_max: 0.4
+      vz_max: 0.4
+    state: []
+  int_y_limit: 0.2
+  int_z_limit: 0.2
+  kd_y: 0.0
+  kd_z: 0.0
+  ki_y: 0.0
+  ki_z: 0.185
+  kp_y: 0.2
+  kp_z: 0.335
+  max_dv: 0.1
+  tol_y: 0.02
+  tol_z: 0.2
+  vy_max: 0.4
+  vz_max: 0.4
+state: []

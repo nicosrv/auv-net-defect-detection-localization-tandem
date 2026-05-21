@@ -1,0 +1,20 @@
+<launch>
+    <node pkg="net_hole_detector"
+          type="masked_stereo_image_builder.py"
+          name="masked_stereo_image_builder"
+          output="screen">
+
+        <param name="left_image_topic" value="/stereo/left/image_rect_color"/>
+        <param name="right_image_topic" value="/stereo/right/image_rect_color"/>
+
+        <param name="left_mask_topic" value="/net_hole_detector/stereo_left/hole_mask"/>
+        <param name="right_mask_topic" value="/net_hole_detector/stereo_right/hole_mask"/>
+
+        <param name="left_camera_info_topic" value="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
+        <param name="right_camera_info_topic" value="/stereo/right/camera_info"/>
+
+        <param name="dilation_kernel_size" value="63"/>
+        <param name="dilation_iterations" value="3"/>
+
+    </node>
+</launch>

@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import rospy
+import cv2
+import numpy as np
+
+from sensor_msgs.msg import Image, CameraInfo
+from cv_bridge import CvBridge
+from message_filters import Subscriber, ApproximateTimeSynchronizer
+
+
+class MaskedStereoImageBuilder:
+
+    def __init__(self):
+        self.bridge = CvBridge()
+
+        self.left_image_topic = rospy.get_param("~left_image_topic", "/stereo/left/image_rect_color")
+        self.right_image_topic = rospy.get_param("~right_image_topic", "/stereo/right/image_rect_color")
+
+        self.left_mask_topic = rospy.get_param("~left_mask_topic", "/net_hole_detector/stereo_left/hole_mask")
+        self.right_mask_topic = rospy.get_param("~right_mask_topic", "/net_hole_detector/stereo_right/hole_mask")
+
+        self.left_info_topic = rospy.get_param(
+            "~left_camera_info_topic",
+            "/girona500/xiroi/stereo_ch3/left_optical/camera_info"
+        )
+        self.right_info_topic = rospy.get_param(
+            "~right_camera_info_topic",
+            "/stereo/right/camera_info"
+        )
+
+        self.pub_left_img = rospy.Publisher("/masked_stereo/left/image_raw", Image, queue_size=1)
+        self.pub_right_img = rospy.Publisher("/masked_stereo/right/image_raw", Image, queue_size=1)
+
+        self.pub_left_info = rospy.Publisher("/masked_stereo/left/camera_info", CameraInfo, queue_size=1)
+        self.pub_right_info = rospy.Publisher("/masked_stereo/right/camera_info", CameraInfo, queue_size=1)
+
+        self.pub_left_debug = rospy.Publisher("/masked_stereo/left/debug", Image, queue_size=1)
+        self.pub_right_debug = rospy.Publisher("/masked_stereo/right/debug", Image, queue_size=1)
+
+        self.dilation_kernel_size = int(rospy.get_param("~dilation_kernel_size", 63))
+        self.dilation_iterations = int(rospy.get_param("~dilation_iterations", 3))
+
+        if self.dilation_kernel_size < 3:
+            self.dilation_kernel_size = 3
+        if self.dilation_kernel_size % 2 == 0:
+            self.dilation_kernel_size += 1
+
+        self.last_left_info = None
+        self.last_right_info = None
+
+        rospy.Subscriber(self.left_info_topic, CameraInfo, self.left_info_cb, queue_size=1)
+        rospy.Subscriber(self.right_info_topic, CameraInfo, self.right_info_cb, queue_size=1)
+
+        sub_left_img = Subscriber(self.left_image_topic, Image)
+        sub_right_img = Subscriber(self.right_image_topic, Image)
+        sub_left_mask = Subscriber(self.left_mask_topic, Image)
+        sub_right_mask = Subscriber(self.right_mask_topic, Image)
+
+        self.sync = ApproximateTimeSynchronizer(
+            [sub_left_img, sub_right_img, sub_left_mask, sub_right_mask],
+            queue_size=10,
+            slop=0.3
+        )
+        self.sync.registerCallback(self.cb)
+
+        rospy.loginfo("[MaskedStereoImageBuilder] Ready.")
+        rospy.loginfo("[MaskedStereoImageBuilder] máscara 63/3 + textura original.")
+
+    def left_info_cb(self, msg):
+        self.last_left_info = msg
+
+    def right_info_cb(self, msg):
+        self.last_right_info = msg
+
+    def prepare_mask(self, mask, image_shape):
+        h, w = image_shape[:2]
+
+        if mask.shape[0] != h or mask.shape[1] != w:
+            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+        base = mask > 0
+
+        if np.count_nonzero(base) == 0:
+            return base
+
+        kernel = np.ones((self.dilation_kernel_size, self.dilation_kernel_size), dtype=np.uint8)
+        base_u8 = (base.astype(np.uint8)) * 255
+
+        dilated = cv2.dilate(base_u8, kernel, iterations=self.dilation_iterations) > 0
+
+        return dilated
+
+    def apply_mask(self, img, mask_bool):
+        out = np.zeros_like(img)
+        out[mask_bool, :] = img[mask_bool, :]
+        return out
+
+    def publish_camera_info(self, left_img_msg, right_img_msg):
+        left_info = self.last_left_info
+        right_info = self.last_right_info
+
+        left_info.header.stamp = left_img_msg.header.stamp
+        left_info.header.frame_id = left_img_msg.header.frame_id
+
+        right_info.header.stamp = right_img_msg.header.stamp
+        right_info.header.frame_id = right_img_msg.header.frame_id
+
+        self.pub_left_info.publish(left_info)
+        self.pub_right_info.publish(right_info)
+
+    def cb(self, left_img_msg, right_img_msg, left_mask_msg, right_mask_msg):
+        if self.last_left_info is None or self.last_right_info is None:
+            rospy.logwarn_throttle(2.0, "[MaskedStereoImageBuilder] Esperando camera_info...")
+            return
+
+        try:
+            left_img = self.bridge.imgmsg_to_cv2(left_img_msg, desired_encoding="bgr8")
+            right_img = self.bridge.imgmsg_to_cv2(right_img_msg, desired_encoding="bgr8")
+            left_mask = self.bridge.imgmsg_to_cv2(left_mask_msg, desired_encoding="mono8")
+            right_mask = self.bridge.imgmsg_to_cv2(right_mask_msg, desired_encoding="mono8")
+        except Exception as e:
+            rospy.logerr("[MaskedStereoImageBuilder] Error convirtiendo imágenes: %s", str(e))
+            return
+
+        left_mask_bool = self.prepare_mask(left_mask, left_img.shape)
+        right_mask_bool = self.prepare_mask(right_mask, right_img.shape)
+
+        left_pixels = int(np.count_nonzero(left_mask_bool))
+        right_pixels = int(np.count_nonzero(right_mask_bool))
+
+        if left_pixels == 0 or right_pixels == 0:
+            rospy.logwarn_throttle(
+                1.0,
+                "[MaskedStereoImageBuilder] Máscara vacía | left=%d right=%d",
+                left_pixels,
+                right_pixels
+            )
+            return
+
+        left_out = self.apply_mask(left_img, left_mask_bool)
+        right_out = self.apply_mask(right_img, right_mask_bool)
+
+        left_msg = self.bridge.cv2_to_imgmsg(left_out, encoding="bgr8")
+        right_msg = self.bridge.cv2_to_imgmsg(right_out, encoding="bgr8")
+
+        left_msg.header = left_img_msg.header
+        right_msg.header = right_img_msg.header
+
+        self.pub_left_img.publish(left_msg)
+        self.pub_right_img.publish(right_msg)
+
+        self.publish_camera_info(left_img_msg, right_img_msg)
+
+        left_debug = (left_img * 0.25).astype(np.uint8)
+        right_debug = (right_img * 0.25).astype(np.uint8)
+
+        left_debug[left_mask_bool, :] = left_img[left_mask_bool, :]
+        right_debug[right_mask_bool, :] = right_img[right_mask_bool, :]
+
+        left_debug_msg = self.bridge.cv2_to_imgmsg(left_debug, encoding="bgr8")
+        right_debug_msg = self.bridge.cv2_to_imgmsg(right_debug, encoding="bgr8")
+
+        left_debug_msg.header = left_img_msg.header
+        right_debug_msg.header = right_img_msg.header
+
+        self.pub_left_debug.publish(left_debug_msg)
+        self.pub_right_debug.publish(right_debug_msg)
+
+        rospy.loginfo_throttle(
+            1.0,
+            "[MaskedStereoImageBuilder] Publicando máscara 63/3 | left_pixels=%d right_pixels=%d",
+            left_pixels,
+            right_pixels
+        )
+
+
+if __name__ == "__main__":
+    rospy.init_node("masked_stereo_image_builder")
+    MaskedStereoImageBuilder()
+    rospy.spin()

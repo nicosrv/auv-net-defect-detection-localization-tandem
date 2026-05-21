@@ -1,0 +1,24 @@
+<launch>
+    <!-- Calculate bounding boxes over rectified stereo images -->
+    <arg name="left_final_image_topic" value="/stereo/left/image_rect_color"/>
+    <arg name="left_yolo_output_topic" default="/net_hole_detector/stereo_left/bounding_boxes"/>
+
+    <arg name="right_final_image_topic" value="/stereo/right/image_rect_color"/>
+    <arg name="right_yolo_output_topic" default="/net_hole_detector/stereo_right/bounding_boxes"/>
+
+    <!-- Left Yolo bounding boxes node -->
+    <group ns="stereo_left">
+        <include file="$(find net_hole_detector)/launch/yolo_inference.launch">
+            <arg name="input_image_topic" value="$(arg left_final_image_topic)"/>
+            <arg name="output_topic" value="$(arg left_yolo_output_topic)"/>
+        </include>
+    </group>
+
+    <!-- Right Yolo bounding boxes node -->
+    <group ns="stereo_right">
+        <include file="$(find net_hole_detector)/launch/yolo_inference.launch">
+            <arg name="input_image_topic" value="$(arg right_final_image_topic)"/>
+            <arg name="output_topic" value="$(arg right_yolo_output_topic)"/>
+        </include>
+    </group>
+</launch>

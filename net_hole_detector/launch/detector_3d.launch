@@ -1,0 +1,27 @@
+<launch>
+    <arg name="image_topic" default="/stereo/left/image_rect_color"/>
+    <arg name="camera_info_topic" default="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
+    <arg name="yolo_input_topic" default="/net_hole_detector/stereo_left/bounding_boxes"/>
+
+    <!-- Frame correcto de la cámara estéreo izquierda -->
+    <arg name="camera_frame" default="girona500/xiroi/stereo_ch3/left_optical"/>
+
+    <arg name="calibration_yaml" default="$(find net_hole_detector)/config/front_camera.yaml"/>
+    <arg name="is_rectified" default="true"/>
+
+    <node pkg="net_hole_detector"
+          type="detector_node.py"
+          name="net_hole_detector_3d"
+          output="screen">
+
+        <param name="image_topic" value="$(arg image_topic)"/>
+        <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
+        <param name="yolo_topic" value="$(arg yolo_input_topic)"/>
+        <param name="camera_frame" value="$(arg camera_frame)"/>
+        <param name="calibration_file" value="$(arg calibration_yaml)"/>
+        <param name="is_rectified" value="$(arg is_rectified)"/>
+
+        <rosparam command="load" file="$(find net_hole_detector)/config/UJI_tuning_params.yaml"/>
+
+    </node>
+</launch>

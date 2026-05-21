@@ -1,0 +1,15 @@
+<launch>
+    <include file="$(find net_hole_detector)/launch/preprocessing.launch"/>
+
+    <include file="$(find net_hole_detector)/launch/detection.launch"/>
+
+    <node pkg="net_hole_detector" type="hole_3d_pose_publisher.py" name="hole_3d_pose_publisher" output="screen">
+
+        <param name="output_topic" value="/net_hole_detector/hole"/>
+        <!-- <param name="output_topic"
+            value="/tp_controller/tasks/bravo_ee_admittance/target"/> -->
+    </node>
+
+    <include file="$(find net_hole_detector)/launch/stereo_processing.launch"/>
+
+</launch>

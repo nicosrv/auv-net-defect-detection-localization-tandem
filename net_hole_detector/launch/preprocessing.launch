@@ -1,0 +1,67 @@
+<launch>
+    <arg name="sim" default="true"/>
+    <param name="/use_sim_time" value="$(arg sim)"/>
+    <arg name="use_clahe" default="true"/>
+
+    <!-- This is for stonefish simulation: -->
+    <arg name="frontal_original_image" default="/girona500/front_camera/camera/image_color/compressed"/>
+    <!-- This is for isolated bagfile: -->
+    <!-- <arg name="frontal_original_image" default="/girona500/front_camera/camera/image_raw/compressed"/> -->
+    <arg name="right_original_image" default="/girona500/right_camera/camera/image_raw/compressed"/>
+    <arg name="left_original_image" default="/girona500/left_camera/camera/image_raw/compressed"/>
+    <arg name="gripper_original_image" default="/girona500/bravo/gripper/camera/image_raw/compressed"/>
+    <arg name="stereo_left_original_image" default="/girona500/xiroi/stereo_ch3/left_optical/image_color/compressed"/>
+
+    <arg name="frontal_original_camera_info" default="/girona500/front_camera/camera/camera_info"/>
+    <arg name="right_original_camera_info" default="/girona500/right_camera/camera/camera_info"/>
+    <arg name="left_original_camera_info" default="/girona500/left_camera/camera/camera_info"/>
+    <arg name="gripper_original_camera_info" default="/girona500/bravo/gripper/camera/camera_info"/>
+    <arg name="stereo_left_original_camera_info" default="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
+    <arg name="camera_info_to_process" default="/net_hole_detector/original_camera_info_to_process/camera_info"/> 
+
+    <arg name="image_to_process" default="/net_hole_detector/original_image_to_process/image_raw"/>
+    <arg name="is_compressed" default="true"/>
+    
+    <arg name="raw_decompressed_topic" value="$(arg image_to_process)/decompressed_raw"/>
+    <arg name="final_image_topic" value="/net_hole_detector/image_processed"/>
+
+    <node pkg="net_hole_detector" type="camera_selector_node.py" name="camera_selector_node" output="screen">
+        <param name="frontal_original_image"        value="$(arg frontal_original_image)"/>
+        <param name="right_original_image"          value="$(arg right_original_image)"/>
+        <param name="left_original_image"           value="$(arg left_original_image)"/>
+        <param name="gripper_original_image"        value="$(arg gripper_original_image)"/>
+        <param name="stereo_left_original_image"    value="$(arg stereo_left_original_image)"/>
+        <param name="image_to_process"              value="$(arg image_to_process)/compressed"/>
+
+        <param name="frontal_original_camera_info"      value="$(arg frontal_original_camera_info)"/>
+        <param name="right_original_camera_info"        value="$(arg right_original_camera_info)"/>
+        <param name="left_original_camera_info"         value="$(arg left_original_camera_info)"/>
+        <param name="gripper_original_camera_info"      value="$(arg gripper_original_camera_info)"/>
+        <param name="stereo_left_original_camera_info"  value="$(arg stereo_left_original_camera_info)"/>
+        <param name="camera_info_to_process"            value="$(arg camera_info_to_process)"/>
+    </node>
+
+    <group if="$(arg is_compressed)">
+        <node pkg="image_transport" type="republish" name="descomprimidor" output="screen" 
+              args="compressed in:=$(arg image_to_process) raw out:=$(arg raw_decompressed_topic)" />
+    </group>
+
+    <group unless="$(arg is_compressed)">
+        <node pkg="topic_tools" type="relay" name="img_relay_decompress" 
+              args="$(arg image_to_process)/compressed $(arg raw_decompressed_topic)"/>
+    </group>
+
+    <group if="$(arg use_clahe)">
+        <node pkg="net_hole_detector" type="clahe_enhancer.py" name="clahe_node" output="screen">
+            <remap from="image_in" to="$(arg raw_decompressed_topic)"/>
+            <remap from="image_out" to="$(arg final_image_topic)"/>
+            <rosparam command="load" file="$(find net_hole_detector)/config/UJI_tuning_params.yaml" />        
+        </node>
+    </group>
+
+    <group unless="$(arg use_clahe)">
+        <node pkg="topic_tools" type="relay" name="img_relay_processing" 
+              args="$(arg raw_decompressed_topic) $(arg final_image_topic)"/>
+    </group>
+
+</launch>

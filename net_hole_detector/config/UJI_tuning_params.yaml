@@ -1,0 +1,49 @@
+# ==================================================================
+# ARCHIVO MAESTRO DE AJUSTE (TUNING) - NET HOLE DETECTOR
+# ==================================================================
+
+# ------------------------------------------------------------------
+# 1. PREPROCESAMIENTO (CLAHE)
+# Usado por: clahe_enhancer.py
+# ------------------------------------------------------------------
+clip_limit: 2.5          # Contraste (2.0 suave, 4.0 agresivo)
+grid_size: 8             # Tamaño de rejilla (siempre entero)
+
+# ------------------------------------------------------------------
+# 2. VISIÓN POR COMPUTADOR CLÁSICA (ScaleEstimator)
+# Usado por: detector_node.py Y bbox_detector.py
+# ------------------------------------------------------------------
+# Filtros de imagen
+blur_kernel: 7           # Desenfoque (IMPAR: 3, 5, 7...)
+morph_kernel: 5          # Limpieza ruido (IMPAR: 3, 5...)
+thresh_block_size: 41    # Tamaño bloque adaptativo (IMPAR)
+thresh_c: 5              # Sensibilidad umbral (menor = más ruido)
+
+# Filtros geométricos
+min_area_px: 25          # Descartar manchas pequeñas
+max_percent_area: 0.1    # Descartar manchas gigantes (10% imagen)
+
+# ------------------------------------------------------------------
+# 3. INTELIGENCIA ARTIFICIAL (YOLO)
+# Usado por: bbox_detector.py
+# ------------------------------------------------------------------
+confidenceThreshold: 0.4 # Certeza mínima (0.0 a 1.0)
+decimation: 4            # Procesar 1 de cada N frames (Ahorra CPU)
+period: 0.5              # Tiempo de espera entre inferencias (segundos)
+max_bbox_area_percent: 0.10 # Maximum percent of the area image that we allow the bbox to have
+
+# NOTA: Los paths (pesos, logs) se quedan en el .launch 
+# porque dependen de la estructura de carpetas de la máquina, no del ajuste.
+
+
+# ------------------------------------------------------------------
+# 4. FILTRADO ESPACIAL Y CONVERSIÓN A MUNDO (DetectionToWorldPose)
+# Usado por: detection_to_world_pose.py
+# ------------------------------------------------------------------
+detection_to_world_pose:
+  jump_threshold: 10.0
+  alpha: 0.5
+  min_score: 0.4
+  selection_mode: "score_area_combo"
+  w_score: 0.7
+  w_area: 0.3

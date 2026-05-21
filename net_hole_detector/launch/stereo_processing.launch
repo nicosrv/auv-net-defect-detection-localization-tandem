@@ -1,0 +1,37 @@
+<launch>
+    <!-- This node renames the CameraInfo topic of the right camera AND most importantly, modifies its values to take into account the distance between the 2 cameras (this distance is required for stereo_image_proc to work) -->
+    <node pkg="net_hole_detector" type="corrector_camera_info.py" name="corrector_camera_info" output="screen"/>
+
+    <!-- Nodo stereo_image_proc -->
+    <group ns="stereo">
+        <node pkg="stereo_image_proc" type="stereo_image_proc" name="stereo_image_proc" output="screen">
+            <param name="approximate_sync" value="true"/>
+            <!-- Remapeo de imágenes -->
+            <remap from="left/image_raw"  to="/girona500/xiroi/stereo_ch3/left_optical/image_color"/>
+            <remap from="right/image_raw" to="/girona500/xiroi/stereo_ch3/right_optical/image_color"/>
+
+            <!-- Remapeo de información de cámara -->
+            <remap from="left/camera_info"  to="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
+            <!-- <remap from="right/camera_info" to="/girona500/xiroi/stereo_ch3/right_optical/camera_info"/> -->
+            <!-- Comentada la línea para que use el camerainfo corregido y no el original -->
+        </node>
+    </group>
+
+    <node pkg="net_hole_detector" type="stereo_distance_estimator.py" name="stereo_distance_estimator" output="screen"/>
+
+    <!-- Node to publish hole coordinates in World NED  -->
+    <node pkg="net_hole_detector"
+          type="detection_to_world_pose.py"
+          name="detection_to_world_pose"
+          output="screen">
+        
+        <param name="input_topic"  value="/net_hole_detector/stereo_detections_3d"/>
+        <param name="output_topic" value="/net_hole_detector/hole"/>
+        <param name="world_frame"  value="world_ned"/>
+        <param name="error_topic" value="/net_hole_detector/error"/>
+
+        <rosparam command="load" 
+                  file="$(find net_hole_detector)/config/UJI_tuning_params.yaml" />
+    </node>
+
+</launch>

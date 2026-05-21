@@ -1,0 +1,18 @@
+
+<launch>
+    <arg name="input_image_topic"/>
+    <arg name="weights_path"      default="$(find net_hole_detector)/weights/best_red_neuronal.pt"/>
+    <arg name="output_topic"/>
+
+    <node name="yolo_inference" pkg="net_hole_detector" type="bbox_detector.py" output="screen">
+        <param name="pathWeights" value="$(arg weights_path)"/>
+
+        <param name="confidenceThreshold" value="0.35"/>
+        <param name="period" value="0.1"/>
+
+        <rosparam command="load" file="$(find net_hole_detector)/config/UJI_tuning_params.yaml" />  
+
+        <remap from="camera_input" to="$(arg input_image_topic)"/>
+        <remap from="yolo/detections"  to="$(arg output_topic)"/>
+    </node>
+</launch>
