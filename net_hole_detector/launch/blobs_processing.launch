@@ -1,6 +1,0 @@
-<launch>
-    <node pkg="net_hole_detector" type="blobs_processing.py" name="blobs_processing" output="screen">
-        <param name="masked_image_topic"        value="/net_hole_detector/net_mask_yolo_fused" />
-        <param name="holes_info_topic"          value="$/net_hole_detector/net_stats" />
-    </node>
-</launch>

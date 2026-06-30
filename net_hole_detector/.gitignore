@@ -1,0 +1,58 @@
+# =====================
+# IDEs / Editors
+# =====================
+.vscode/
+*/.vscode/
+
+# =====================
+# Backup / Swap files
+# =====================
+*~
+*.swp
+*.swo
+*.swk
+*.swj
+*.swh
+*.swg
+
+# =====================
+# Python bytecode / caches
+# =====================
+__pycache__/
+*.py[cod]
+*$py.class
+*pyc
+
+# =====================
+# Build / Dist
+# =====================
+*/build/
+*/bin/
+*/lib/
+dist/
+*.egg-info/
+
+# =====================
+# Conda / Environments
+# =====================
+*.conda
+*.env
+
+# =====================
+# ROS / Catkin
+# =====================
+devel/
+*.rosinstall
+*.log
+*.bag
+
+# =====================
+# Scripts temporary / private
+# =====================
+
+
+# =====================
+# OS-specific
+# =====================
+.DS_Store
+Thumbs.db

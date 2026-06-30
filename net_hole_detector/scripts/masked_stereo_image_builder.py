@@ -66,7 +66,7 @@ class MaskedStereoImageBuilder:
         self.sync.registerCallback(self.cb)
 
         rospy.loginfo("[MaskedStereoImageBuilder] Ready.")
-        rospy.loginfo("[MaskedStereoImageBuilder] máscara 63/3 + textura original.")
+        rospy.loginfo("[MaskedStereoImageBuilder] 63/3 mask + original texture.")
 
     def left_info_cb(self, msg):
         self.last_left_info = msg
@@ -112,7 +112,7 @@ class MaskedStereoImageBuilder:
 
     def cb(self, left_img_msg, right_img_msg, left_mask_msg, right_mask_msg):
         if self.last_left_info is None or self.last_right_info is None:
-            rospy.logwarn_throttle(2.0, "[MaskedStereoImageBuilder] Esperando camera_info...")
+            rospy.logwarn_throttle(2.0, "[MaskedStereoImageBuilder] Waiting for camera_info...")
             return
 
         try:
@@ -121,7 +121,7 @@ class MaskedStereoImageBuilder:
             left_mask = self.bridge.imgmsg_to_cv2(left_mask_msg, desired_encoding="mono8")
             right_mask = self.bridge.imgmsg_to_cv2(right_mask_msg, desired_encoding="mono8")
         except Exception as e:
-            rospy.logerr("[MaskedStereoImageBuilder] Error convirtiendo imágenes: %s", str(e))
+            rospy.logerr("[MaskedStereoImageBuilder] Error converting images: %s", str(e))
             return
 
         left_mask_bool = self.prepare_mask(left_mask, left_img.shape)
@@ -132,8 +132,8 @@ class MaskedStereoImageBuilder:
 
         if left_pixels == 0 or right_pixels == 0:
             rospy.logwarn_throttle(
-                1.0,
-                "[MaskedStereoImageBuilder] Máscara vacía | left=%d right=%d",
+                5.0,
+                "[MaskedStereoImageBuilder] Empty mask | left=%d right=%d",
                 left_pixels,
                 right_pixels
             )
@@ -170,7 +170,7 @@ class MaskedStereoImageBuilder:
 
         rospy.loginfo_throttle(
             1.0,
-            "[MaskedStereoImageBuilder] Publicando máscara 63/3 | left_pixels=%d right_pixels=%d",
+            "[MaskedStereoImageBuilder] Mask 63/3 | left_pixels=%d right_pixels=%d",
             left_pixels,
             right_pixels
         )

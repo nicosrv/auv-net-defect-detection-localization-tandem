@@ -7,7 +7,7 @@
     <node name="yolo_inference" pkg="net_hole_detector" type="bbox_detector.py" output="screen">
         <param name="pathWeights" value="$(arg weights_path)"/>
 
-        <param name="confidenceThreshold" value="0.35"/>
+        <param name="confidenceThreshold" value="0.25"/>
         <param name="period" value="0.1"/>
 
         <rosparam command="load" file="$(find net_hole_detector)/config/UJI_tuning_params.yaml" />  

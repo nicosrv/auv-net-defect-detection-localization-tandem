@@ -3,21 +3,30 @@
 
 import rospy
 import math
+
 from geometry_msgs.msg import Twist, Point, PointStamped, PoseStamped
 from std_msgs.msg import Float64
-from tf.transformations import euler_from_quaternion
 from visualization_msgs.msg import Marker
 from dynamic_reconfigure.server import Server
+
 from tandem.cfg import VerticalInspectorConfig
 
 from cola2_msgs.msg import BodyVelocityReq, GoalDescriptor, Bool6Axis, NavSts
-from net_hole_detector.msg import BoundingBoxArray
+from net_hole_detector.msg import BoundingBoxArray, Detection3DArray
 
 
 class VerticalInspector(object):
     """
     Generates a vertical inspection pattern (lawnmower in Y-Z).
-    The depth reference (Z) is obtained directly from NavSts.
+
+    Final approach strategy:
+    - The robot detects the hole in 2D using the left stereo bounding box.
+    - It visually centers the hole using lateral velocity vy and vertical velocity vz.
+    - It keeps the desired yaw fixed, looking frontally at the net.
+    - Once the hole is centered, it uses the Z distance published by
+      /net_hole_detector/stereo_detections_3d.
+    - This Z comes from masked_stereo_z.launch, not from world_ned and not from
+      /net_hole_detector/hole.
     """
 
     def __init__(self):
@@ -48,7 +57,7 @@ class VerticalInspector(object):
         self.kp_y = 0.20
         self.ki_y = 0.0
         self.kd_y = 0.0
-        self.vy_max = 0.1
+        self.vy_max = rospy.get_param("~vy_max", 0.1)
         self.int_y_limit = 0.2
         self.tol_y = 0.15
 
@@ -56,9 +65,15 @@ class VerticalInspector(object):
         self.kp_z = 0.12
         self.ki_z = 0.01
         self.kd_z = 0.0
-        self.vz_max = 0.1
+        self.vz_max = rospy.get_param("~vz_max", 0.1)
         self.int_z_limit = 0.2
         self.tol_z = 0.15
+
+        # Forward approach control using good masked-stereo Z
+        self.vx_max = rospy.get_param("~vx_max", 0.05)
+        self.kp_forward = rospy.get_param("~kp_forward", 0.10)
+        self.target_hole_distance = rospy.get_param("~target_hole_distance", 1.0)
+        self.distance_tolerance = rospy.get_param("~distance_tolerance", 0.08)
 
         # Filter parameters
         self.alpha = 0.3
@@ -93,14 +108,15 @@ class VerticalInspector(object):
         self.pub_current_point = rospy.Publisher("current_target_point", PointStamped, queue_size=1)
 
         # ==========================================
-        # --- HOLE DETECTOR TRACKING FILTER ---
+        # --- HOLE DETECTOR TRACKING FILTER LEGACY ---
         # ==========================================
+        # This is kept for compatibility with old code, but the final approach
+        # does NOT depend on /net_hole_detector/hole anymore.
         self.hole_pose = None
         self.candidate_hole_pose = None
         self.hole_detect_count = 0
         self.last_hole_time = rospy.Time(0)
 
-        # Parámetros del filtro espacio-temporal
         self.req_detections = 3
         self.max_hole_dist = 1.25
         self.max_hole_timeout = 9.0
@@ -118,8 +134,6 @@ class VerticalInspector(object):
         self.last_bbox = None
         self.last_bbox_time = rospy.Time(0)
 
-        # Si hay bbox 2D consistente, podemos entrar en APPROACH_HOLE
-        # aunque todavía no exista /net_hole_detector/hole 3D.
         self.enable_visual_only_approach = rospy.get_param(
             "~enable_visual_only_approach",
             True
@@ -138,22 +152,15 @@ class VerticalInspector(object):
 
         self.bbox_timeout = rospy.get_param("~bbox_timeout", 1.0)
 
-        # Tolerancias de centrado en imagen.
-        # bbox.x y bbox.y están normalizados entre 0 y 1.
         self.visual_tol_x = rospy.get_param("~visual_tol_x", 0.08)
         self.visual_tol_y = rospy.get_param("~visual_tol_y", 0.08)
 
-        # Ganancias visuales.
-        # Antes se usaba kp_visual_yaw para girar hacia el agujero.
-        # Ahora mantenemos yaw frontal y usamos vy para centrar lateralmente.
         self.kp_visual_yaw = rospy.get_param("~kp_visual_yaw", 0.8)
         self.kp_visual_y = rospy.get_param("~kp_visual_y", 0.12)
         self.kp_visual_z = rospy.get_param("~kp_visual_z", 0.25)
 
-        # Si al corregir lateralmente se mueve al lado contrario, cambiar a -1.0 en launch.
         self.visual_y_sign = rospy.get_param("~visual_y_sign", 1.0)
 
-        # Solo avanzar si además de estar centrado visualmente, el yaw está bien alineado.
         self.require_yaw_centered_for_forward = rospy.get_param(
             "~require_yaw_centered_for_forward",
             True
@@ -163,6 +170,26 @@ class VerticalInspector(object):
             self.bbox_topic,
             BoundingBoxArray,
             self.bbox_cb,
+            queue_size=1
+        )
+
+        # ==========================================
+        # --- GOOD Z FROM masked_stereo_z.launch ---
+        # ==========================================
+        self.stereo_3d_topic = rospy.get_param(
+            "~stereo_3d_topic",
+            "/net_hole_detector/stereo_detections_3d"
+        )
+
+        self.stereo_3d_timeout = rospy.get_param("~stereo_3d_timeout", 1.0)
+
+        self.current_hole_z = float("nan")
+        self.last_hole_z_time = rospy.Time(0)
+
+        self.sub_stereo_3d = rospy.Subscriber(
+            self.stereo_3d_topic,
+            Detection3DArray,
+            self.stereo_3d_cb,
             queue_size=1
         )
 
@@ -191,6 +218,12 @@ class VerticalInspector(object):
         rospy.loginfo("FILTERING ENABLED: %s", self.use_smoothing_flag)
         rospy.loginfo("SAFETY LIMIT Z: %.2f m", self.max_safe_depth)
         rospy.loginfo("Visual bbox topic: %s", self.bbox_topic)
+        rospy.loginfo("Stereo 3D topic for final approach: %s", self.stereo_3d_topic)
+        rospy.loginfo(
+            "Final approach target distance: %.2f m | tolerance: %.2f m",
+            self.target_hole_distance,
+            self.distance_tolerance
+        )
 
     def reconfigure_cb(self, config, level):
         """Dynamic reconfigure callback."""
@@ -308,13 +341,10 @@ class VerticalInspector(object):
 
     def bbox_cb(self, msg):
         """
-        Guarda la mejor bbox actual.
+        Stores the current best 2D bounding box.
 
-        Ahora también sirve para NO perder el agujero:
-        - Si hay detección 2D consistente durante varias imágenes,
-          entramos en APPROACH_HOLE aunque todavía no haya Z 3D.
-        - En APPROACH_HOLE el robot se centra visualmente.
-        - Solo avanza cuando ya haya hole_pose 3D.
+        If there is a consistent visual detection, the robot enters
+        APPROACH_HOLE even if the final stereo Z has not arrived yet.
         """
 
         now = rospy.Time.now()
@@ -329,7 +359,7 @@ class VerticalInspector(object):
         if best_box.score < self.visual_min_bbox_score:
             rospy.logwarn_throttle(
                 1.0,
-                "BBox visual descartada por score bajo: %.2f < %.2f",
+                "BBox Visual discarded due to low score: %.2f < %.2f",
                 best_box.score,
                 self.visual_min_bbox_score
             )
@@ -341,12 +371,9 @@ class VerticalInspector(object):
         if not self.enable_visual_only_approach:
             return
 
-        # Solo abortamos el patrón de búsqueda si estamos MOVING.
-        # No lo hacemos durante INITIALIZING ni FINISHED.
         if self.state != "MOVING":
             return
 
-        # Si pasa demasiado tiempo entre detecciones, reiniciamos racha.
         if (now - self.last_visual_detection_time).to_sec() > self.visual_detection_timeout:
             self.visual_detect_count = 0
 
@@ -355,7 +382,7 @@ class VerticalInspector(object):
 
         rospy.loginfo_throttle(
             1.0,
-            "BBox visual consistente: %d/%d | score=%.2f",
+            "Consistent visual BBox: %d/%d | score=%.2f",
             self.visual_detect_count,
             self.req_visual_detections,
             best_box.score
@@ -363,11 +390,36 @@ class VerticalInspector(object):
 
         if self.visual_detect_count >= self.req_visual_detections:
             rospy.logwarn(
-                "!!! AGUJERO DETECTADO EN 2D !!! Entrando en APPROACH_HOLE visual aunque todavía no haya Z 3D."
+                "¡¡¡ HOLE DETECTED IN 2D !!! Entering visual APPROACH_HOLE."
             )
 
             self.state = "APPROACH_HOLE"
             self.visual_detect_count = 0
+
+    def stereo_3d_cb(self, msg):
+        """
+        Receives the final Z calculated by masked_stereo_z.launch.
+
+        Topic:
+            /net_hole_detector/stereo_detections_3d
+
+        Used value:
+            msg.detections[0].z
+
+        This is the distance from the stereo camera to the hole.
+        It is not transformed to world_ned.
+        """
+
+        if not msg.detections:
+            return
+
+        det = msg.detections[0]
+
+        if det.z <= 0.0:
+            return
+
+        self.current_hole_z = float(det.z)
+        self.last_hole_z_time = rospy.Time.now()
 
     def nav_cb(self, msg):
         """
@@ -387,7 +439,6 @@ class VerticalInspector(object):
         if not self.has_init:
             self.x0, self.y0, self.z0, self.yaw0 = px, py, pz, yaw
 
-            # Force net Y-Z to be calculated based on the desired orientation
             self.yaw0 = self.target_yaw
 
             self.has_init = True
@@ -399,14 +450,10 @@ class VerticalInspector(object):
 
     def hole_cb(self, msg):
         """
-        Recibe la posición 3D del agujero en world_ned.
+        Legacy callback for /net_hole_detector/hole.
 
-        Filtro usado:
-        - Si no hay candidato, crea uno.
-        - Si llega una detección cercana al candidato, suma racha.
-        - Si llega una detección que salta demasiado, se ignora.
-        - Si pasa demasiado tiempo sin detecciones válidas, se reinicia candidato.
-        - Cuando entra en APPROACH_HOLE, se congela hole_pose.
+        It is kept to avoid breaking old workflows, but the final approach
+        implemented below does not depend on this topic.
         """
 
         hx = msg.pose.position.x
@@ -416,33 +463,25 @@ class VerticalInspector(object):
 
         new_hole_pose = (hx, hy, hz)
 
-        # Si ya estamos terminados, ignoramos nuevas detecciones.
         if self.state in ["READY_TO_CROSS", "FINISHED"]:
             return
 
-        # Si hemos entrado en APPROACH_HOLE solo por bbox 2D,
-        # aceptamos el primer /hole 3D que llegue para poder avanzar.
         if self.state == "APPROACH_HOLE":
             if self.hole_pose is None:
                 self.hole_pose = new_hole_pose
-                rospy.loginfo(
-                    "Z/pose 3D recibida durante APPROACH_HOLE visual. "
-                    "A partir de ahora se puede usar distancia 3D para avanzar."
-                )
+                rospy.loginfo("Legacy /net_hole_detector/hole received during APPROACH_HOLE.")
             return
 
-        # Solo buscamos durante ALIGNING o MOVING
         if self.state not in ["MOVING", "ALIGNING"]:
             return
 
-        # Primera detección candidata
         if self.candidate_hole_pose is None:
             self.candidate_hole_pose = new_hole_pose
             self.hole_detect_count = 1
             self.last_hole_time = now
 
             rospy.loginfo(
-                "Posible agujero detectado. Iniciando tracking... (1/%d)",
+                "Possible hole detected by legacy /hole. Starting tracking... (1/%d)",
                 self.req_detections
             )
             return
@@ -457,10 +496,9 @@ class VerticalInspector(object):
             (hz - cz) ** 2
         )
 
-        # Regla temporal
         if time_diff > self.max_hole_timeout:
             rospy.logwarn(
-                "Tracking perdido por tiempo (%.1fs). Reiniciando candidato...",
+                "Tracking legacy lost for time (%.1fs). Resetting candidate....",
                 time_diff
             )
 
@@ -469,19 +507,16 @@ class VerticalInspector(object):
             self.last_hole_time = now
             return
 
-        # Regla espacial
         if dist_3d > self.max_hole_dist:
             rospy.logwarn(
-                "Detección descartada por salto espacial (%.2fm). Se mantiene el candidato anterior.",
+                "Legacy detection discarded due to spatial jump (%.2fm).",
                 dist_3d
             )
             return
 
-        # Detección válida
         self.hole_detect_count += 1
         self.last_hole_time = now
 
-        # Smooth candidate to reduce noise from /points2
         alpha = 0.5
         self.candidate_hole_pose = (
             (1.0 - alpha) * cx + alpha * hx,
@@ -490,15 +525,13 @@ class VerticalInspector(object):
         )
 
         rospy.loginfo(
-            "Agujero consistente. Racha: %d/%d",
+            "Consistent legacy hole. Streak: %d/%d",
             self.hole_detect_count,
             self.req_detections
         )
 
-        # Agujero confirmado
         if self.hole_detect_count >= self.req_detections:
-            rospy.loginfo("!!! AGUJERO 100% VERIFICADO !!! Abortando patrón de búsqueda.")
-
+            rospy.loginfo("¡¡¡ LEGACY HOLE VERIFIED !!! Entering APPROACH_HOLE.")
             self.hole_pose = self.candidate_hole_pose
             self.state = "APPROACH_HOLE"
 
@@ -650,23 +683,6 @@ class VerticalInspector(object):
         elif self.state == "APPROACH_HOLE":
 
             px, py, pz, yaw = self.last_pose
-
-            have_3d_target = self.hole_pose is not None
-
-            if have_3d_target:
-                hx, hy, hz = self.hole_pose
-
-                # Distancia al objetivo 3D congelado.
-                # Se usa como referencia aproximada de parada a 1.5 m.
-                dist_xy = math.sqrt((hx - px) ** 2 + (hy - py) ** 2)
-                dist_seguridad = 1.5
-                e_dist = dist_xy - dist_seguridad
-            else:
-                hx = hy = hz = None
-                dist_xy = None
-                dist_seguridad = 1.5
-                e_dist = None
-
             now = rospy.Time.now()
 
             bbox_is_recent = (
@@ -674,30 +690,23 @@ class VerticalInspector(object):
                 (now - self.last_bbox_time).to_sec() < self.bbox_timeout
             )
 
-            # ======================================================
-            # APPROACH VISUAL
-            # ======================================================
+            has_valid_stereo_z = (
+                math.isfinite(self.current_hole_z) and
+                (now - self.last_hole_z_time).to_sec() < self.stereo_3d_timeout
+            )
+
             if bbox_is_recent:
                 bx = self.last_bbox.x
                 by = self.last_bbox.y
 
-                # bbox.x y bbox.y están normalizados entre 0 y 1.
-                # err_img_x > 0: agujero aparece a la derecha de la imagen.
-                # err_img_y > 0: agujero aparece por debajo del centro.
+                # bbox.x and bbox.y are normalized in [0, 1].
                 err_img_x = bx - 0.5
                 err_img_y = by - 0.5
 
                 centered_x = abs(err_img_x) < self.visual_tol_x
                 centered_y = abs(err_img_y) < self.visual_tol_y
 
-                # --------------------------------------------------
-                # NUEVA LÓGICA:
-                # - NO giramos el robot para centrar el agujero.
-                # - Mantenemos yaw frontal hacia la red.
-                # - Centramos horizontalmente con velocidad lateral vy.
-                # --------------------------------------------------
-
-                # Mantener yaw deseado/frontal.
+                # Keep frontal yaw to the net.
                 e_yaw_hold = self.normalize_angle(self.target_yaw - yaw)
                 yaw_centered = abs(e_yaw_hold) < self.tol_yaw
 
@@ -707,73 +716,80 @@ class VerticalInspector(object):
                     self.wz_max
                 )
 
-                # Movimiento lateral para centrar agujero.
+                # Lateral visual centering.
                 vy = self.clip(
                     self.visual_y_sign * self.kp_visual_y * err_img_x,
                     -self.vy_max,
                     self.vy_max
                 )
 
-                # Si ya está centrado en X, no metas velocidad lateral residual.
                 if centered_x:
                     vy = 0.0
 
-                # Movimiento vertical para centrar en altura.
+                # Vertical visual centering.
                 vz = self.clip(
                     self.kp_visual_z * err_img_y,
                     -self.vz_max,
                     self.vz_max
                 )
 
-                # Si ya está centrado en Y, no metas velocidad vertical residual.
                 if centered_y:
                     vz = 0.0
 
                 vx = 0.0
+                err_dist = float("nan")
 
                 can_advance_yaw = (
                     yaw_centered or
                     (not self.require_yaw_centered_for_forward)
                 )
 
-                # Solo avanzamos si:
-                # 1) agujero centrado en imagen
-                # 2) yaw frontal mantenido
-                # 3) tenemos objetivo 3D con distancia
                 if centered_x and centered_y and can_advance_yaw:
-                    if have_3d_target:
-                        if e_dist > 0.15:
-                            kp_x = 0.2
-                            vx_max = 0.15
-                            vx = self.clip(kp_x * e_dist, -vx_max, vx_max)
-                        else:
-                            rospy.loginfo("¡LLEGAMOS AL PUNTO DE SEGURIDAD! Listos para cruzar.")
+                    if has_valid_stereo_z:
+                        err_dist = self.current_hole_z - self.target_hole_distance
+
+                        if abs(err_dist) <= self.distance_tolerance:
+                            rospy.loginfo(
+                                "¡SAFETY DISTANCE REACHED! "
+                                "Z=%.2fm | target=%.2fm",
+                                self.current_hole_z,
+                                self.target_hole_distance
+                            )
+
                             self.state = "FINISHED"
                             self.publish_cmd(0.0, 0.0, 0.0, 0.0, "inspector_ready")
                             return
+
+                        else:
+                            # Only move forward or stop. Do not move backwards.
+                            vx = self.kp_forward * err_dist
+                            vx = self.clip(vx, 0.0, self.vx_max)
+
                     else:
                         rospy.loginfo_throttle(
                             1.0,
-                            "Agujero centrado visualmente, pero todavía SIN Z 3D. "
-                            "Se mantiene centrado y NO avanza."
+                            "Visually centered hole, but still WITHOUT 3D Z from masked_stereo_z."
+                            "It remains centered and DOES NOT advance."
+                        
                         )
-
-                e_dist_log = e_dist if have_3d_target else float("nan")
 
                 self.publish_cmd(vx, vy, vz, wz, "inspector_visual_lateral_approach")
 
                 rospy.loginfo_throttle(
                     1.0,
-                    "Approach VISUAL LATERAL | ImgErrX: %.2f ImgErrY: %.2f | "
+                    "Approach VISUAL LATERAL + MASKED Z | ImgErrX: %.2f ImgErrY: %.2f | "
                     "Centered(%s,%s) | YawErr: %.2f rad YawOK:%s | "
-                    "ErrDist: %.2fm | Cmd(vx:%.2f vy:%.2f vz:%.2f wz:%.2f)",
+                    "Z: %.2fm Target: %.2fm ErrDist: %.2fm | "
+                    "Cmd(vx:%.2f vy:%.2f vz:%.2f wz:%.2f)",
                     err_img_x,
                     err_img_y,
                     str(centered_x),
                     str(centered_y),
                     e_yaw_hold,
                     str(yaw_centered),
-                    e_dist_log,
+                    self.current_hole_z if has_valid_stereo_z else float("nan"),
+                    self.target_hole_distance,
+                    err_dist,
                     vx,
                     vy,
                     vz,
@@ -782,65 +798,19 @@ class VerticalInspector(object):
 
                 return
 
-            # ======================================================
-            # FALLBACK 3D
-            # ======================================================
-            # Si no hay bbox reciente y tampoco tenemos hole_pose 3D,
-            # no podemos avanzar. Mantenemos yaw frontal y esperamos.
-            if not have_3d_target:
-                e_yaw_hold = self.normalize_angle(self.target_yaw - yaw)
-                wz = self.clip(self.kp_yaw * e_yaw_hold, -self.wz_max, self.wz_max)
+            # If no recent bbox is available, keep yaw and wait.
+            e_yaw_hold = self.normalize_angle(self.target_yaw - yaw)
+            wz = self.clip(self.kp_yaw * e_yaw_hold, -self.wz_max, self.wz_max)
 
-                self.publish_cmd(0.0, 0.0, 0.0, wz, "inspector_waiting_visual_or_3d")
-
-                rospy.loginfo_throttle(
-                    1.0,
-                    "APPROACH_HOLE sin bbox reciente y sin Z 3D. "
-                    "Esperando detección visual o /net_hole_detector/hole. YawErr=%.2f",
-                    e_yaw_hold
-                )
-                return
-
-            # Si no hay bbox reciente, usamos el método antiguo.
-            # Esta era la versión estable previa a meter Z_live.
-
-            e_z = hz - pz
-            vz_cmd = self.kp_z * e_z
-            vz = self.clip(vz_cmd, -self.vz_max, self.vz_max)
-            reached_z = abs(e_z) < self.tol_z
-
-            target_yaw_hole = math.atan2(hy - py, hx - px)
-            e_yaw = self.normalize_angle(target_yaw_hole - yaw)
-            wz_cmd = self.kp_yaw * e_yaw
-            wz = self.clip(wz_cmd, -self.wz_max, self.wz_max)
-            reached_yaw = abs(e_yaw) < self.tol_yaw
-
-            vx = 0.0
-
-            if reached_z and reached_yaw:
-                if e_dist > 0.15:
-                    kp_x = 0.2
-                    vx_max = 0.15
-                    vx = self.clip(kp_x * e_dist, -vx_max, vx_max)
-
-                else:
-                    rospy.loginfo("¡LLEGAMOS AL PUNTO DE SEGURIDAD! Listos para cruzar.")
-                    self.state = "FINISHED"
-                    self.publish_cmd(0.0, 0.0, 0.0, 0.0, "inspector_ready")
-                    return
-
-            self.publish_cmd(vx, 0.0, vz, wz, "inspector_approaching")
+            self.publish_cmd(0.0, 0.0, 0.0, wz, "inspector_waiting_visual")
 
             rospy.loginfo_throttle(
                 1.0,
-                "Approach 3D FALLBACK | ErrDist: %.2fm | ErrZ: %.2f | ErrYaw: %.1f deg | Cmd(vx:%.2f vz:%.2f wz:%.2f)",
-                e_dist,
-                e_z,
-                math.degrees(e_yaw),
-                vx,
-                vz,
-                wz
+                "APPROACH_HOLE without recent bbox. Waiting for visual detection. YawErr=%.2f",
+                e_yaw_hold
             )
+
+            return
 
         # --- State 5: FINISHED ---
         elif self.state == "FINISHED":
@@ -928,3 +898,4 @@ if __name__ == "__main__":
 
     except rospy.ROSInterruptException:
         pass
+        

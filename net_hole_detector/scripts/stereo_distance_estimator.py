@@ -104,8 +104,8 @@ class StereoDistanceEstimator:
         )
 
         rospy.loginfo("[StereoDistanceEstimator] Ready.")
-        rospy.loginfo("[StereoDistanceEstimator] Fuente: /masked_stereo/disparity.")
-        rospy.loginfo("[StereoDistanceEstimator] Método: disparity cerca del prior de máscaras; fallback dinámico si no hay píxeles.")
+        rospy.loginfo("[StereoDistanceEstimator] Source: /masked_stereo/disparity.")
+        rospy.loginfo("[StereoDistanceEstimator] Method: Disparity close to the mask prior; dynamic fallback if there are no pixels.")
 
     @staticmethod
     def odd(v, minimum):
@@ -239,7 +239,7 @@ class StereoDistanceEstimator:
 
         if z < self.z_min_valid or z > self.z_max_valid:
             rospy.logwarn(
-                "[StereoDistanceEstimator] Z fuera de rango físico | Z=%.3f m | disp=%.2f",
+                "[StereoDistanceEstimator] Z out of physical range | Z=%.3f m | disp=%.2f",
                 z,
                 disp
             )
@@ -255,7 +255,7 @@ class StereoDistanceEstimator:
 
         if jump > self.max_temporal_jump:
             rospy.logwarn(
-                "[StereoDistanceEstimator] Z rechazada por salto | raw=%.3f prev=%.3f jump=%.3f disp=%.2f",
+                "[StereoDistanceEstimator] Z rejected due to jump | raw=%.3f prev=%.3f jump=%.3f disp=%.2f",
                 z,
                 self.last_z,
                 jump,
@@ -286,7 +286,7 @@ class StereoDistanceEstimator:
             disp = self.bridge.imgmsg_to_cv2(disp_msg.image, desired_encoding="passthrough")
             disp = np.asarray(disp, dtype=np.float32)
         except Exception as e:
-            rospy.logerr("[StereoDistanceEstimator] Error leyendo disparity image: %s", str(e))
+            rospy.logerr("[StereoDistanceEstimator] Error reading disparity image: %s", str(e))
             self.pub_det.publish(out_msg)
             return
 
@@ -297,7 +297,7 @@ class StereoDistanceEstimator:
             left_mask = self.bridge.imgmsg_to_cv2(left_mask_msg, desired_encoding="mono8")
             right_mask = self.bridge.imgmsg_to_cv2(right_mask_msg, desired_encoding="mono8")
         except Exception as e:
-            rospy.logerr("[StereoDistanceEstimator] Error leyendo máscaras: %s", str(e))
+            rospy.logerr("[StereoDistanceEstimator] Error reading masks: %s", str(e))
             self.pub_det.publish(out_msg)
             return
 
@@ -331,7 +331,7 @@ class StereoDistanceEstimator:
         if xs.size < self.min_points:
             rospy.logwarn_throttle(
                 1.0,
-                "[StereoDistanceEstimator] Pocos píxeles válidos: %d/%d",
+                "[StereoDistanceEstimator] Few valid pixels: %d/%d",
                 xs.size,
                 self.min_points
             )

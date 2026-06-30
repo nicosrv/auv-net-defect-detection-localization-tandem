@@ -25,9 +25,9 @@ class BboxDetector:
         # self.input_topic = rospy.get_param("~input_topic", "/image_rect_color")
 
         # --- 2. CARGAR MODELO ---
-        rospy.loginfo(f"Cargando YOLO desde: {self.model_path} ...")
+        rospy.loginfo(f"Loading YOLO from: {self.model_path} ...")
         self.model = YOLO(self.model_path)
-        rospy.loginfo("Modelo cargado y listo.")
+        rospy.loginfo("Model loaded and ready.")
 
         # --- 3. CARGAR CLASES ---
         self.scale_estimator = ScaleEstimator()

@@ -21,4 +21,3 @@ if __name__ == "__main__":
     CorrectorCameraInfo()
     rospy.spin()
 
-# Comentari de prova!!!!

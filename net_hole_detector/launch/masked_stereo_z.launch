@@ -24,7 +24,7 @@
         <param name="bbox_expand" value="1.8"/>
 
         <param name="z_min_valid" value="0.15"/>
-        <param name="z_max_valid" value="8.0"/>
+        <param name="z_max_valid" value="4.0"/>
 
         <param name="min_valid_disparity" value="0.5"/>
         <param name="max_valid_disparity" value="250.0"/>

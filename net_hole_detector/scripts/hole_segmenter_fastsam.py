@@ -13,24 +13,25 @@ from net_hole_detector.msg import BoundingBoxArray
 
 class HoleSegmenterFastSAM:
     """
-    Nodo ROS que recibe:
-      - imagen de cámara
-      - bounding boxes de YOLO
+    ROS node that receives:
+        - camera image
+        - YOLO bounding boxes
 
-    Y publica:
-      - máscara binaria del agujero
-      - imagen debug con bbox + máscara
+    And publishes:
+        - binary mask of the detected hole
+        - debug image with the bounding box and the selected mask
 
-    Idea:
-      YOLO localiza la zona aproximada del agujero.
-      FastSAM segmenta la imagen.
-      Se selecciona la máscara de FastSAM que más solapa con la bbox de YOLO.
+    Purpose:
+        YOLO provides an approximate localization of the hole in the image.
+        FastSAM segments the scene and generates candidate masks.
+        The FastSAM mask with the highest overlap with the YOLO bounding box is selected
+        as the final segmentation of the detected defect.
     """
 
     def __init__(self):
         rospy.init_node("hole_segmenter_fastsam")
 
-        # -------- Parámetros --------
+        # -------- Parameters --------
         self.image_topic = rospy.get_param(
             "~image_topic",
             "/girona500/xiroi/stereo_ch3/left_optical/image_color"
@@ -69,7 +70,7 @@ class HoleSegmenterFastSAM:
         self.model = FastSAM(self.weights_path)
         rospy.loginfo("[FastSAM] Modelo cargado correctamente.")
 
-        # -------- Subscriptores sincronizados --------
+        # -------- Synchronized suscribers --------
         sub_img = Subscriber(self.image_topic, Image)
         sub_box = Subscriber(self.bbox_topic, BoundingBoxArray)
 
@@ -80,7 +81,7 @@ class HoleSegmenterFastSAM:
         )
         self.sync.registerCallback(self.callback)
 
-        # -------- Publicadores --------
+        # -------- Publishers --------
         self.pub_mask = rospy.Publisher(
             self.mask_topic,
             Image,
@@ -93,10 +94,10 @@ class HoleSegmenterFastSAM:
             queue_size=1
         )
 
-        rospy.loginfo("[FastSAM] Escuchando imagen: %s", self.image_topic)
-        rospy.loginfo("[FastSAM] Escuchando bboxes: %s", self.bbox_topic)
-        rospy.loginfo("[FastSAM] Publicando máscara en: %s", self.mask_topic)
-        rospy.loginfo("[FastSAM] Publicando debug en: %s", self.debug_topic)
+        rospy.loginfo("[FastSAM]: %s", self.image_topic)
+        rospy.loginfo("[FastSAM]: %s", self.bbox_topic)
+        rospy.loginfo("[FastSAM]: %s", self.mask_topic)
+        rospy.loginfo("[FastSAM]: %s", self.debug_topic)
 
     def callback(self, img_msg, bbox_msg):
         now = rospy.Time.now()
@@ -113,7 +114,7 @@ class HoleSegmenterFastSAM:
             final_mask = np.zeros((height, width), dtype=np.uint8)
             debug_img = cv_img.copy()
 
-            # Si YOLO no detecta nada, publicamos máscara vacía.
+            # If YOLO does not detect anything, we publish empty mask.
             if not bbox_msg.boxes:
                 mask_msg = self.bridge.cv2_to_imgmsg(final_mask, encoding="mono8")
                 mask_msg.header = img_msg.header
@@ -123,10 +124,10 @@ class HoleSegmenterFastSAM:
                 debug_msg.header = img_msg.header
                 self.pub_debug.publish(debug_msg)
 
-                rospy.loginfo_throttle(2.0, "[FastSAM] Sin bboxes de YOLO.")
+                rospy.loginfo_throttle(5.0, "[FastSAM] No YOLO bboxes.")
                 return
 
-            # Ejecutar FastSAM sobre la imagen completa
+            # Apply FastSAM
             results = self.model(
                 cv_img,
                 imgsz=self.imgsz,
@@ -139,12 +140,12 @@ class HoleSegmenterFastSAM:
             result = results[0]
 
             if result.masks is None:
-                rospy.logwarn("[FastSAM] No se han generado máscaras.")
+                rospy.logwarn("[FastSAM] No masks were generated.")
                 return
 
             masks = result.masks.data.cpu().numpy()
 
-            # Asegurar que las máscaras tienen el tamaño de la imagen original
+            # Make sure that the masks are the same size as the original image.
             resized_masks = []
             for m in masks:
                 m_uint8 = (m > 0.5).astype(np.uint8) * 255
@@ -152,7 +153,7 @@ class HoleSegmenterFastSAM:
                     m_uint8 = cv2.resize(m_uint8, (width, height), interpolation=cv2.INTER_NEAREST)
                 resized_masks.append(m_uint8)
 
-            # Para cada bbox de YOLO, buscamos la máscara de FastSAM que más solapa
+            # For each YOLO bbox, we look for the FastSAM mask that fits beter.
             for bb in bbox_msg.boxes:
                 u1 = int((bb.x - bb.w / 2.0) * width)
                 u2 = int((bb.x + bb.w / 2.0) * width)
@@ -181,39 +182,39 @@ class HoleSegmenterFastSAM:
                     if mask_area == 0 or bbox_area == 0:
                         continue
 
-                    # Score: cuánto de la máscara cae dentro de la bbox
+                    # Score: How much of the mask is inside the bbox.
                     score = intersection / float(mask_area)
 
                     if score > best_score:
                         best_score = score
                         best_mask = m
 
-                # Si encuentra una máscara razonable, la añadimos a la máscara final
+                # If we find a reasonable mask, we add it to the final mask
                 if best_mask is not None and best_score > 0.05:
                     final_mask = cv2.bitwise_or(final_mask, best_mask)
 
-                    # Dibujar bbox
+                    # Draw bbox
                     cv2.rectangle(debug_img, (u1, v1), (u2, v2), (0, 255, 255), 2)
 
-                    # Pintar máscara en verde
+                    # Draw mask in green
                     green_overlay = np.zeros_like(debug_img)
                     green_overlay[:, :, 1] = final_mask
                     debug_img = cv2.addWeighted(debug_img, 1.0, green_overlay, 0.4, 0)
 
-                    rospy.loginfo(
-                        "[FastSAM] Máscara seleccionada | bbox score=%.2f | YOLO score=%.2f",
+                    rospy.loginfo_throttle(1,
+                        "[FastSAM] Selected mask | bbox score=%.2f | YOLO score=%.2f",
                         best_score,
                         bb.score
                     )
                 else:
-                    rospy.logwarn("[FastSAM] No se encontró máscara útil para una bbox.")
+                    rospy.logwarn("[FastSAM] No valid mask was found for a bbox.")
 
-            # Publicar máscara final
+            # Publish final mask
             mask_msg = self.bridge.cv2_to_imgmsg(final_mask, encoding="mono8")
             mask_msg.header = img_msg.header
             self.pub_mask.publish(mask_msg)
 
-            # Publicar imagen debug
+            # Publish debug image
             debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding="bgr8")
             debug_msg.header = img_msg.header
             self.pub_debug.publish(debug_msg)
