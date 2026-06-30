@@ -5,10 +5,10 @@ import cv2
 from sensor_msgs.msg import Image
 from ultralytics import YOLO
 
-# Import new messages
+# Import new messages.
 from net_hole_detector.msg import BoundingBox, BoundingBoxArray
 
-# Import auxiliary classes
+# Import auxiliary classes.
 from net_hole_detector.scale_estimator import ScaleEstimator
 from net_hole_detector.ros_numpy_converter import RosNumPyConverter
 
@@ -16,28 +16,28 @@ class BboxDetector:
     def __init__(self):
         rospy.init_node('bbox_detector')
 
-        # --- 1. PARAMETROS ---
-        self.model_path = rospy.get_param("~pathWeights") # Pon tu ruta por defecto
+        # --- 1. PARAMETERS ---
+        self.model_path = rospy.get_param("~pathWeights")
         self.conf_thres = rospy.get_param("~confidenceThreshold", 0.5)
         self.period = float(rospy.get_param("~period", 0.5))
         # Variable to store last time we process an image
         self.last_process_time = rospy.Time(0)
         # self.input_topic = rospy.get_param("~input_topic", "/image_rect_color")
 
-        # --- 2. CARGAR MODELO ---
+        # --- 2. UPLOAD MODEL ---
         rospy.loginfo(f"Loading YOLO from: {self.model_path} ...")
         self.model = YOLO(self.model_path)
         rospy.loginfo("Model loaded and ready.")
 
-        # --- 3. CARGAR CLASES ---
+        # --- 3. UPLOAD CLASSES ---
         self.scale_estimator = ScaleEstimator()
         self.bridge = RosNumPyConverter()
 
-        # --- 4. SUSCRIPTOR Y PUBLICADOR ---
+        # --- 4. SUBSCRIBER AND PUBLISHER ---
         self.sub_img = rospy.Subscriber('camera_input', Image, self.callback_image, queue_size=1)
         self.pub_det = rospy.Publisher('yolo/detections', BoundingBoxArray, queue_size=1)
 
-        # --- 5. NEW BLOBS PUBLISHERS ---
+        # --- 5. DEBUG IMAGE PUBLISHERS ---
         self.pub_blob_bin = rospy.Publisher('/net_hole_detector/blobs/binary', Image, queue_size=1)
         self.pub_blob_overlay = rospy.Publisher('/net_hole_detector/blobs/overlay', Image, queue_size=1)
 
@@ -45,43 +45,42 @@ class BboxDetector:
         # THROTTLE
         now = rospy.Time.now()
 
-        # Calculate time since last processed image
+        # Calculate time since last processed image.
         if (now - self.last_process_time).to_sec() < self.period:
-            # if less time passed we ignore the image
+            # if less time passed we ignore the image.
             return
         
-        # else, we update the clock
+        # else, we update the clock.
         self.last_process_time = now
         
         try:
-            # 1. Imagen ROS -> Numpy (Using auxiliary class bridge)
+            # 1. Imagen ROS -> Numpy (Using auxiliary class bridge).
             cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
             
-            # 2. Process BLOBS
+            # 2. Process BLOBS.
             _, _, mask_img, _, overlay_img = self.scale_estimator.get_scale_and_images(cv_img)
 
-            # Si hemos detectado red, publicamos las imágenes de debug
+            # If a net has been detected, we publish the debug images.
             if mask_img is not None:
-                # Publicar binaria (mono8 porque es gris)
+               # Publish binary (mono8 because it is gray).
                 self.pub_blob_bin.publish(self.bridge.cv2_to_imgmsg(mask_img, "mono8"))
-                # Publicar overlay (bgr8 porque tiene colores)
+                # Publish overlay (bgr8 because it has colors).
                 self.pub_blob_overlay.publish(self.bridge.cv2_to_imgmsg(overlay_img, "bgr8"))
 
-            # 3. Inferencia
-            # verbose=False para que no llene la consola de texto
+            # 3. Inference
+                # verbose=False, so it does not fill the console with text.
             results = self.model(cv_img, verbose=False, conf=self.conf_thres)
             
-            # 4. Preparar Mensaje de Salida
+           # 4. Prepare Output Message.
             msg_out = BoundingBoxArray()
-            msg_out.header = msg.header # COPIAMOS EL TIMESTAMP ORIGINAL
+            msg_out.header = msg.header # WE COPY THE ORIGINAL TIMESTAMP
             msg_out.boxes = []
             
-            # 5. Rellenar datos
+           # 5. Fill data
             result = results[0]
 
             if len(result.boxes) > 0:
-                # xywhn devuelve: x_center, y_center, width, height (NORMALIZADOS 0-1)
-                # Esto es perfecto para lo que pides.
+                # xywhn returns: x_center, y_center, width, height (NORMALIZED 0-1).
                 boxes_data = result.boxes.xywhn.cpu().numpy()
                 scores = result.boxes.conf.cpu().numpy()
                 classes = result.boxes.cls.cpu().numpy()
@@ -91,15 +90,15 @@ class BboxDetector:
                     bbox.class_id = str(int(classes[i]))
                     bbox.score = float(scores[i])
                     
-                    # Coordenadas normalizadas (0 a 1)
-                    bbox.x = float(boxes_data[i][0]) # Centro X
-                    bbox.y = float(boxes_data[i][1]) # Centro Y
-                    bbox.w = float(boxes_data[i][2]) # Ancho
-                    bbox.h = float(boxes_data[i][3]) # Alto
+                    # Normalized coordinates (0 - 1)
+                    bbox.x = float(boxes_data[i][0]) # Center X
+                    bbox.y = float(boxes_data[i][1]) # Center Y
+                    bbox.w = float(boxes_data[i][2]) # Width
+                    bbox.h = float(boxes_data[i][3]) # Heigh
                     
                     msg_out.boxes.append(bbox)
             
-            # 6. Publicar
+            # 6. Publish.
             self.pub_det.publish(msg_out)
 
         except Exception as e:
