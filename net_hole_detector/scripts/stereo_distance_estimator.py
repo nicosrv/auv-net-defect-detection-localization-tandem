@@ -18,7 +18,8 @@ class StereoDistanceEstimator:
     def __init__(self):
         self.bridge = CvBridge()
 
-        # Salida de stereo_image_proc aplicado a imágenes enmascaradas.
+        
+        # Output of stereo_image_proc applied to masked images.
         self.disparity_topic = rospy.get_param("~disparity_topic", "/masked_stereo/disparity")
 
         self.left_mask_topic = rospy.get_param("~left_mask_topic", "/net_hole_detector/stereo_left/hole_mask")
@@ -35,33 +36,35 @@ class StereoDistanceEstimator:
         self.min_bbox_score = float(rospy.get_param("~min_bbox_score", 0.20))
         self.min_points = int(rospy.get_param("~min_points", 20))
 
-        # Máscara 63/3.
+        # Mask 63/3.
         self.dilation_kernel_size = int(rospy.get_param("~dilation_kernel_size", 63))
         self.dilation_iterations = int(rospy.get_param("~dilation_iterations", 3))
         self.inner_exclusion_kernel = int(rospy.get_param("~inner_exclusion_kernel", 15))
 
         self.bbox_expand = float(rospy.get_param("~bbox_expand", 1.8))
 
-        # Rango físico razonable.
+        # Reasonable physical range.
         self.z_min_valid = float(rospy.get_param("~z_min_valid", 0.15))
         self.z_max_valid = float(rospy.get_param("~z_max_valid", 8.0))
 
         self.min_valid_disparity = float(rospy.get_param("~min_valid_disparity", 0.5))
         self.max_valid_disparity = float(rospy.get_param("~max_valid_disparity", 250.0))
 
-        # Selección cerca del prior de máscaras.
+       # Selection close to the mask prior.
         self.prior_tolerance_px = float(rospy.get_param("~prior_tolerance_px", 3.0))
         self.min_prior_points = int(rospy.get_param("~min_prior_points", 5))
 
-        # IMPORTANTE: definido para evitar el crash.
+        # IMPORTANT: defined to avoid crash.
         self.disp_bin_width = float(rospy.get_param("~disp_bin_width", 1.0))
         self.min_peak_points = int(rospy.get_param("~min_peak_points", 3))
 
-        # Si stereo_image_proc no da puntos cerca del prior, usamos el prior dinámico.
-        # No es escala fija: cambia con cada frame.
+        
+        # If stereo_image_proc does not give points close to the prior, we use the dynamic prior.
+        # It is not a fixed scale: it changes with each frame.
+
         self.use_prior_fallback = rospy.get_param("~use_prior_fallback", True)
 
-        # Filtro temporal anti-picos.
+        # Temporal filter to avoid sudden jumps.
         self.max_temporal_jump = float(rospy.get_param("~max_temporal_jump", 0.45))
         self.history_timeout = float(rospy.get_param("~history_timeout", 3.0))
 
@@ -140,7 +143,8 @@ class StereoDistanceEstimator:
         outer = self.dilate(base, self.dilation_kernel_size, self.dilation_iterations)
         inner = self.dilate(base, self.inner_exclusion_kernel, 1)
 
-        # Corona alrededor del agujero. Se evita el interior/fondo.
+       
+        # Corona around the hole. The interior/background is avoided.
         return outer & (~inner)
 
     def bbox_mask(self, bb, width, height):
@@ -192,7 +196,7 @@ class StereoDistanceEstimator:
 
         d_close = d[(d >= low) & (d <= high)]
 
-        # CASO BUENO: stereo_image_proc sí tiene disparidades cerca del prior.
+        # GOOD CASE: stereo_image_proc does have disparities close to the prior.
         if d_close.size >= self.min_prior_points:
             bins = np.arange(low, high + self.disp_bin_width, self.disp_bin_width)
 
@@ -216,17 +220,19 @@ class StereoDistanceEstimator:
                             })
 
                 if candidates:
-                    # Elegimos el bin más cercano al prior, no el más lejano ni el más poblado.
+                    # We choose the bin closest to the prior, not the furthest nor the most populated.
+
                     best = min(candidates, key=lambda c: abs(c["disp"] - prior_disp))
                     return best["disp"], int(best["count"]), "stereo_near_prior_bin"
 
-            # Si no hay bin claro, usamos la mediana dentro de la ventana estricta.
+            # If there is no clear bin, we use the median within the strict window.
             return float(np.median(d_close)), int(d_close.size), "stereo_near_prior_median"
 
-        # CASO FALLBACK:
-        # Si /masked_stereo/disparity no tiene ningún píxel cerca del prior,
-        # no elegimos 55, 2, 15 ni otras barbaridades.
-        # Usamos el prior dinámico de las máscaras izquierda-derecha.
+        # FALLBACK CASE:
+        # If /masked_stereo/disparity does not have any pixel close to the prior,
+        # we do not choose 55, 2, 15, or other absurdities.
+        # We use the dynamic prior from the left-right masks.
+
         if self.use_prior_fallback:
             return float(prior_disp), int(d_close.size), "mask_prior_fallback"
 
