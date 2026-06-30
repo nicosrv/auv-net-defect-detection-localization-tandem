@@ -114,7 +114,7 @@ class HoleSegmenterFastSAM:
             final_mask = np.zeros((height, width), dtype=np.uint8)
             debug_img = cv_img.copy()
 
-            # If YOLO does not detect anything, we publish empty mask.
+            # If YOLO does not detect anything, we publish an empty mask.
             if not bbox_msg.boxes:
                 mask_msg = self.bridge.cv2_to_imgmsg(final_mask, encoding="mono8")
                 mask_msg.header = img_msg.header
@@ -153,7 +153,7 @@ class HoleSegmenterFastSAM:
                     m_uint8 = cv2.resize(m_uint8, (width, height), interpolation=cv2.INTER_NEAREST)
                 resized_masks.append(m_uint8)
 
-            # For each YOLO bbox, we look for the FastSAM mask that fits beter.
+            # For each YOLO bbox, we look for the FastSAM mask that fits better.
             for bb in bbox_msg.boxes:
                 u1 = int((bb.x - bb.w / 2.0) * width)
                 u2 = int((bb.x + bb.w / 2.0) * width)
@@ -189,14 +189,14 @@ class HoleSegmenterFastSAM:
                         best_score = score
                         best_mask = m
 
-                # If we find a reasonable mask, we add it to the final mask
+                # If we find a reasonable mask, we add it to the final mask.
                 if best_mask is not None and best_score > 0.05:
                     final_mask = cv2.bitwise_or(final_mask, best_mask)
 
-                    # Draw bbox
+                    # Draw bbox.
                     cv2.rectangle(debug_img, (u1, v1), (u2, v2), (0, 255, 255), 2)
 
-                    # Draw mask in green
+                    # Draw mask in green.
                     green_overlay = np.zeros_like(debug_img)
                     green_overlay[:, :, 1] = final_mask
                     debug_img = cv2.addWeighted(debug_img, 1.0, green_overlay, 0.4, 0)
@@ -209,12 +209,12 @@ class HoleSegmenterFastSAM:
                 else:
                     rospy.logwarn("[FastSAM] No valid mask was found for a bbox.")
 
-            # Publish final mask
+            # Publish final mask.
             mask_msg = self.bridge.cv2_to_imgmsg(final_mask, encoding="mono8")
             mask_msg.header = img_msg.header
             self.pub_mask.publish(mask_msg)
 
-            # Publish debug image
+            # Publish debug image.
             debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding="bgr8")
             debug_msg.header = img_msg.header
             self.pub_debug.publish(debug_msg)
