@@ -8,7 +8,7 @@ The package launches the `vertical_inspector` controller for the Girona500 AUV. 
 
 ```text
 tandem/
-├── cfg/       Dynamic reconfigure parameters
+├── cfg/       Parameters
 ├── launch/    Controller launch file
 └── src/       Python control node
 ```
@@ -18,7 +18,6 @@ tandem/
 | File | Purpose |
 |---|---|
 | `src/ri.py` | Main controller node. Publishes body velocity commands for the Girona500. |
-| `cfg/VerticalInspector.cfg` | Runtime tuning parameters for the Y and Z control loops. |
 | `launch/girona500.launch` | Launch file for the `vertical_inspector` node. |
 
 ## Control inputs
@@ -32,7 +31,7 @@ The controller uses the following perception topics:
 
 The bounding boxes are used for visual centering.
 
-The 3D detections are used to control the final distance to the detected hole.
+The 3D detections are used to control the stopping final distance to the detected hole.
 
 ## Control output
 
@@ -50,4 +49,4 @@ These commands are used to move the vehicle in the body frame during the inspect
 roslaunch tandem girona500.launch
 ```
 
-The launch file defines the inspection limits, velocity limits, visual servoing gains, detection timeouts and safety distance to the net-defect.
+The launch file defines the inspection movement, velocity limits, visual servoing gains, detection timeouts and safety distance to the net-defect.
