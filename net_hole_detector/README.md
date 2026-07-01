@@ -13,7 +13,7 @@ net_hole_detector/
 ├── msg/         Custom ROS messages
 ├── scripts/     Python ROS nodes
 ├── src/         Internal Python modules
-└── weights/     Trained YOLO weights
+└── weights/     Trained YOLO and FastSAM weights
 ```
 
 ## Main nodes
@@ -81,7 +81,7 @@ roslaunch net_hole_detector masked_stereo_processing.launch
 roslaunch net_hole_detector masked_stereo_z.launch
 ```
 
-The YOLO and FastSAM nodes require the Python environment containing the corresponding deep learning dependencies.
+The YOLO and FastSAM nodes must be executed with the corresponding Conda environment activated (yolo_env), since this environment contains the required deep learning dependencies.
 
 ## Custom messages
 
