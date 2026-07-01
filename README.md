@@ -2,198 +2,100 @@
 
 This repository contains the ROS packages developed for the Final Degree Project:
 
-Autonomous 3D Localization of Fish Farm Net Defects for AUV-Based Inspection and Intervention
+**Autonomous 3D Localization of Fish Farm Net Defects for AUV-Based Inspection and Intervention**
 
-The system detects defects in fish-farm nets using deep learning, segments the damaged region, estimates its depth from stereo vision, and provides the information required for the AUV to approach the defect safely.
+The objective of the system is to detect holes in underwater fish-farm nets, segment the damaged region, estimate its 3D position from stereo vision, and use this information to guide the Girona500 AUV during the final approach.
+
+The perception pipeline estimates the distance between the stereo camera and the detected defect. This distance is then used by the control node to move the vehicle towards the hole and stop at a predefined safety distance of approximately 1 meter.
+
 
 ## Repository structure
 
-- net_hole_detector/
-  - launch/
-  - scripts/
-  - msg/
-  - srv/
-  - config/
-  - envs/
-  - weights/
-  - CMakeLists.txt
-  - package.xml
-  - setup.py
+auv-net-defect-detection-localization-tandem/
+├── net_hole_detector/   
+├── tandem/             
+├── .gitignore
+└── README.md
 
-- tandem/
-  - launch/
-  - src/
-  - CMakeLists.txt
-  - package.xml
+Each package (net_hole_detector and tandem) contains its own README file with a more detailed description of its internal structure, launch files, scripts and ROS topics.
 
-## Main packages
+## Description
 
-### net_hole_detector
+First, YOLO detects the defect in the left and right rectified stereo images. The resulting bounding boxes are used as prompts for FastSAM, which generates segmentation masks of the damaged region. These masks are applied to the stereo pair so that disparity is computed mainly around the relevant area.
 
-This package contains the perception pipeline:
+The disparity information is then used to estimate the 3D position of the defect with respect to the camera. Finally, the 2D detections and the estimated distance to the defect are used to center the vehicle and approach the defect until the desired safety distance is reached.
 
-- stereo image preprocessing
-- YOLO-based 2D defect detection
-- FastSAM-based segmentation
-- masked stereo image generation
-- stereo disparity computation
-- 3D depth estimation of the detected defect
 
-### tandem
+# net_hole_detector directory
 
-This package contains the robot approach and inspection logic used to guide the AUV according to the visual detections and the estimated distance to the defect.
+Contains the perception pipeline used to detect and localize the defect.
 
-## Main launch files
+Main functions:
 
-The final pipeline used in the TFG is executed with the following launch files.
+YOLO-based 2D defect detection.
+FastSAM-based segmentation of the damaged region.
+Masked stereo image generation.
+Stereo disparity computation.
+3D position estimation of the detected defect.
 
-### Simulation environment
+Main output topic:
 
-Command:
+/net_hole_detector/stereo_detections_3d
 
+More details are provided in:
+
+net_hole_detector/README.md
+
+
+# tandem directory
+
+Contains the control node used for the Girona500 AUV movement and approach behavior.
+
+The controller uses the perception output to:
+
+Align the vehicle with the detected defect.
+Follow a predefined inspection path.
+Use the estimated 3D distance and YOLO detections to regulate the final approach.
+Stop the vehicle at a predefined safety distance from the net.
+
+Main output topic:
+
+/girona500/controller/body_velocity_req
+
+More details are provided in:
+
+tandem/README.md
+
+
+
+## Main execution order
+
+The complete system is launched step by step.
+
+1. Simulation environment
 roslaunch cola2_stonefish girona500_windturbine.launch
 
-This launch starts the simulation environment and the Girona500 AUV. It belongs to the external Stonefish/COLA2 simulation setup and is not part of this repository.
-
-### Stereo preprocessing
-
-Command:
-
+2. Stereo processing
 roslaunch net_hole_detector stereo_processing.launch
 
-Main script:
-
-corrector_camera_info.py
-
-This launch prepares the stereo camera information required by the rest of the perception pipeline.
-
-### YOLO 2D detection
-
-Command:
-
+3. YOLO 2D detection
 roslaunch net_hole_detector stereo_bboxes.launch
 
-This launch internally uses:
-
-yolo_inference.launch
-bbox_detector.py
-
-It runs the YOLO-based detector on the left and right stereo images and publishes the detected bounding boxes.
-
-### FastSAM segmentation
-
-Command:
-
+4. FastSAM segmentation
 roslaunch net_hole_detector fastsam_stereo_dual.launch
 
-Main script:
-
-hole_segmenter_fastsam.py
-
-This launch applies FastSAM to the stereo detections in order to obtain masks of the damaged region.
-
-### Masked stereo image generation
-
-Command:
-
+5. Masked stereo image generation
 roslaunch net_hole_detector masked_stereo_images.launch
 
-Main script:
-
-masked_stereo_image_builder.py
-
-This launch generates masked stereo images using the segmentation masks.
-
-### Masked stereo disparity
-
-Command:
-
+6. Masked stereo disparity
 roslaunch net_hole_detector masked_stereo_processing.launch
 
-This launch runs the stereo disparity computation on the masked stereo images.
-
-### 3D depth estimation
-
-Command:
-
+7. 3D defect localization
 roslaunch net_hole_detector masked_stereo_z.launch
 
-Main script:
-
-stereo_distance_estimator.py
-
-This launch estimates the depth of the detected defect from the masked stereo disparity.
-
-### AUV approach and inspection logic
-
-Command:
-
+8. AUV final approach control
 roslaunch tandem girona500.launch
 
-Main script:
 
-ri.py
 
-This launch runs the control logic used for the visual approach and inspection behavior of the AUV.
-
-## Final execution order
-
-A typical execution order is:
-
-1. Start the simulation environment:
-
-roslaunch cola2_stonefish girona500_windturbine.launch
-
-2. Start the stereo preprocessing:
-
-roslaunch net_hole_detector stereo_processing.launch
-
-3. Start the YOLO stereo detections:
-
-roslaunch net_hole_detector stereo_bboxes.launch
-
-4. Start the FastSAM stereo segmentation:
-
-roslaunch net_hole_detector fastsam_stereo_dual.launch
-
-5. Start the masked stereo image generation:
-
-roslaunch net_hole_detector masked_stereo_images.launch
-
-6. Start the masked stereo disparity computation:
-
-roslaunch net_hole_detector masked_stereo_processing.launch
-
-7. Start the 3D depth estimation:
-
-roslaunch net_hole_detector masked_stereo_z.launch
-
-8. Start the AUV approach and inspection logic:
-
-roslaunch tandem girona500.launch
-
-## Main scripts used in the final system
-
-- net_hole_detector/scripts/corrector_camera_info.py
-- net_hole_detector/scripts/bbox_detector.py
-- net_hole_detector/scripts/hole_segmenter_fastsam.py
-- net_hole_detector/scripts/masked_stereo_image_builder.py
-- net_hole_detector/scripts/stereo_distance_estimator.py
-- tandem/src/ri.py
-
-## Model weights
-
-The trained and required model weights are stored in:
-
-net_hole_detector/weights/
-
-This folder includes the YOLO weights used for defect detection and the FastSAM model used for segmentation.
-
-## Notes
-
-This repository contains the TFG-specific ROS packages. External simulation and robot packages, such as Stonefish, COLA2, and the Girona500 simulation setup, must be available in the ROS workspace for the complete system to run.
-
-The final submitted version is marked with the tag:
-
-v1.0-tfg-submission
-
+This repository contains the TFG-specific ROS packages used for perception and control. Generated catkin folders such as build/, devel/, install/ and logs/ are intentionally excluded from the repository.
