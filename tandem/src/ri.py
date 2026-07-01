@@ -4,7 +4,7 @@
 import rospy
 import math
 
-from geometry_msgs.msg import Twist, Point, PointStamped, PoseStamped
+from geometry_msgs.msg import Twist, Point, PointStamped
 from std_msgs.msg import Float64
 from visualization_msgs.msg import Marker
 from dynamic_reconfigure.server import Server
@@ -25,8 +25,8 @@ class VerticalInspector(object):
     - It keeps the desired yaw fixed, looking frontally at the net.
     - Once the hole is centered, it uses the Z distance published by
       /net_hole_detector/stereo_detections_3d.
-    - This Z comes from masked_stereo_z.launch, not from world_ned and not from
-      /net_hole_detector/hole.
+    - This Z comes from masked_stereo_z.launch.
+    Some of this code was already given by the SRV Group Github.
     """
 
     def __init__(self):
@@ -107,29 +107,9 @@ class VerticalInspector(object):
         self.sub_nav = rospy.Subscriber(self.navigation_topic, NavSts, self.nav_cb, queue_size=10)
         self.pub_current_point = rospy.Publisher("current_target_point", PointStamped, queue_size=1)
 
+        
         # ==========================================
-        # --- HOLE DETECTOR TRACKING FILTER LEGACY ---
-        # ==========================================
-        # This is kept for compatibility with old code, but the final approach
-        # does NOT depend on /net_hole_detector/hole anymore.
-        self.hole_pose = None
-        self.candidate_hole_pose = None
-        self.hole_detect_count = 0
-        self.last_hole_time = rospy.Time(0)
-
-        self.req_detections = 3
-        self.max_hole_dist = 1.25
-        self.max_hole_timeout = 9.0
-
-        self.sub_hole = rospy.Subscriber(
-            "/net_hole_detector/hole",
-            PoseStamped,
-            self.hole_cb,
-            queue_size=1
-        )
-
-        # ==========================================
-        # --- VISUAL SERVOING FINAL CON BBOX ---
+        # --- FINAL VISUAL SERVOING USING BBOX ---
         # ==========================================
         self.last_bbox = None
         self.last_bbox_time = rospy.Time(0)
@@ -448,93 +428,7 @@ class VerticalInspector(object):
         self.last_pose = (px, py, pz, yaw)
         self.main_control_loop()
 
-    def hole_cb(self, msg):
-        """
-        Legacy callback for /net_hole_detector/hole.
-
-        It is kept to avoid breaking old workflows, but the final approach
-        implemented below does not depend on this topic.
-        """
-
-        hx = msg.pose.position.x
-        hy = msg.pose.position.y
-        hz = msg.pose.position.z
-        now = rospy.Time.now()
-
-        new_hole_pose = (hx, hy, hz)
-
-        if self.state in ["READY_TO_CROSS", "FINISHED"]:
-            return
-
-        if self.state == "APPROACH_HOLE":
-            if self.hole_pose is None:
-                self.hole_pose = new_hole_pose
-                rospy.loginfo("Legacy /net_hole_detector/hole received during APPROACH_HOLE.")
-            return
-
-        if self.state not in ["MOVING", "ALIGNING"]:
-            return
-
-        if self.candidate_hole_pose is None:
-            self.candidate_hole_pose = new_hole_pose
-            self.hole_detect_count = 1
-            self.last_hole_time = now
-
-            rospy.loginfo(
-                "Possible hole detected by legacy /hole. Starting tracking... (1/%d)",
-                self.req_detections
-            )
-            return
-
-        cx, cy, cz = self.candidate_hole_pose
-
-        time_diff = (now - self.last_hole_time).to_sec()
-
-        dist_3d = math.sqrt(
-            (hx - cx) ** 2 +
-            (hy - cy) ** 2 +
-            (hz - cz) ** 2
-        )
-
-        if time_diff > self.max_hole_timeout:
-            rospy.logwarn(
-                "Tracking legacy lost for time (%.1fs). Resetting candidate....",
-                time_diff
-            )
-
-            self.candidate_hole_pose = new_hole_pose
-            self.hole_detect_count = 1
-            self.last_hole_time = now
-            return
-
-        if dist_3d > self.max_hole_dist:
-            rospy.logwarn(
-                "Legacy detection discarded due to spatial jump (%.2fm).",
-                dist_3d
-            )
-            return
-
-        self.hole_detect_count += 1
-        self.last_hole_time = now
-
-        alpha = 0.5
-        self.candidate_hole_pose = (
-            (1.0 - alpha) * cx + alpha * hx,
-            (1.0 - alpha) * cy + alpha * hy,
-            (1.0 - alpha) * cz + alpha * hz
-        )
-
-        rospy.loginfo(
-            "Consistent legacy hole. Streak: %d/%d",
-            self.hole_detect_count,
-            self.req_detections
-        )
-
-        if self.hole_detect_count >= self.req_detections:
-            rospy.loginfo("¡¡¡ LEGACY HOLE VERIFIED !!! Entering APPROACH_HOLE.")
-            self.hole_pose = self.candidate_hole_pose
-            self.state = "APPROACH_HOLE"
-
+    
     def main_control_loop(self):
         """Main controller state machine."""
 
@@ -615,7 +509,7 @@ class VerticalInspector(object):
             if current_depth > self.max_safe_depth:
                 rospy.logwarn_throttle(
                     1.0,
-                    "!!! SAFETY LIMIT REACHED (%.2fm) !!! Forcing ASCENT.",
+                    "¡¡¡ SAFETY LIMIT REACHED (%.2fm) !!! Forcing ASCENT.",
                     current_depth
                 )
 
@@ -750,7 +644,7 @@ class VerticalInspector(object):
 
                         if abs(err_dist) <= self.distance_tolerance:
                             rospy.loginfo(
-                                "¡SAFETY DISTANCE REACHED! "
+                                "¡¡¡SAFETY DISTANCE REACHED!!! "
                                 "Z=%.2fm | target=%.2fm",
                                 self.current_hole_z,
                                 self.target_hole_distance

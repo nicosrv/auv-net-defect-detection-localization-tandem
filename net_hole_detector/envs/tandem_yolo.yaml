@@ -5,18 +5,22 @@ dependencies:
   - python=3.10
   - pip
   - pip:
-      # --- ROS Essentials (Para que funcione rosbag y demás) ---
+      # --- ROS Pyhon utilities ---
       - rospkg
       - catkin-pkg
       - pyyaml
       - netifaces
       
-      # --- Computer Vision & AI (El cerebro) ---
-      # Ultralytics instala solo: Torch, Numpy, Pandas, Matplotlib, Pillow
+      # --- Computer Vision and AI ---
+      # Ultralytics provides YOLO and FastSAM support.
       - ultralytics==8.4.14
       - opencv-python==4.12.0.88
       - scipy
       
-      # --- Utilidades varias ---
+      # --- General utilities ---
       - psutil
       - requests
+
+#Tis code represents the Conda environment used to run the YOLO and FastSAM perception nodes.
+# It installs the Python dependencies required for object detection,image segmentation, and
+# ROS-Python integration.

@@ -1,5 +1,11 @@
 <launch>
-    <!-- Segundo stereo_image_proc: trabaja sobre imágenes enmascaradas por FastSAM -->
+        <!--
+        Runs a second stereo_image_proc instance using the masked stereo images
+        generated after FastSAM segmentation. This restricts disparity estimation
+        to the region around the detected hole, while the wider disparity range
+        allows closer objects to be reconstructed more reliably.
+    -->
+    <!-- Second stereo_image_proc, applied on the masked stereo images generated with FastSAM -->
     <node pkg="stereo_image_proc"
           type="stereo_image_proc"
           name="stereo_image_proc"
@@ -9,11 +15,11 @@
         <param name="approximate_sync" value="true"/>
         <param name="queue_size" value="10"/>
 
-        <!-- Importante para objetos cercanos: permite disparidades grandes -->
+        <!-- Allows large disparities for close-range reconstruction -->
         <param name="min_disparity" value="0"/>
         <param name="disparity_range" value="256"/>
 
-        <!-- Parámetros algo más permisivos -->
+        <!-- Permissive stereo-matching parameters for masked underwater images -->
         <param name="correlation_window_size" value="15"/>
         <param name="texture_threshold" value="0"/>
         <param name="uniqueness_ratio" value="5"/>

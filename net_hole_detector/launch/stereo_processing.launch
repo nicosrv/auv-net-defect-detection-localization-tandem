@@ -1,19 +1,20 @@
 <launch>
-    <!-- This node renames the CameraInfo topic of the right camera AND most importantly, modifies its values to take into account the distance between the 2 cameras (this distance is required for stereo_image_proc to work) -->
+    <!-- This node renames the CameraInfo topic of the right camera AND most importantly, modifies its values to take into account the distance
+    between the 2 cameras (this distance is required for stereo_image_proc to work) -->
     <node pkg="net_hole_detector" type="corrector_camera_info.py" name="corrector_camera_info" output="screen"/>
 
-    <!-- Nodo stereo_image_proc -->
+    <!-- First stereo_image_proc node -->
     <group ns="stereo">
         <node pkg="stereo_image_proc" type="stereo_image_proc" name="stereo_image_proc" output="screen" launch-prefix="bash -c 'sleep 2; exec $0 $@'">
             <param name="approximate_sync" value="true"/>
-            <!-- Remapeo de imágenes -->
+            <!-- Remapping of the images -->
             <remap from="left/image_raw"  to="/girona500/xiroi/stereo_ch3/left_optical/image_color"/>
             <remap from="right/image_raw" to="/girona500/xiroi/stereo_ch3/right_optical/image_color"/>
 
-            <!-- Remapeo de información de cámara -->
+            <!-- Remapping of the camera information -->
             <remap from="left/camera_info"  to="/girona500/xiroi/stereo_ch3/left_optical/camera_info"/>
             <!-- <remap from="right/camera_info" to="/girona500/xiroi/stereo_ch3/right_optical/camera_info"/> -->
-            <!-- Comentada la línea para que use el camerainfo corregido y no el original -->
+            <!-- The remap above is disabled to force the node to use the corrected CameraInfo topic instead of the original one -->
         </node>
     </group>
 </launch>

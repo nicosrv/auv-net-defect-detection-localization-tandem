@@ -3,6 +3,10 @@
 import rospy
 from sensor_msgs.msg import CameraInfo
 
+# ROS node used to republish the right camera CameraInfo with a corrected
+# projection matrix. The Tx term is adjusted so that stereo_image_proc can
+# compute the disparity using the expected stereo baseline.
+
 class CorrectorCameraInfo:
 
     def __init__(self):

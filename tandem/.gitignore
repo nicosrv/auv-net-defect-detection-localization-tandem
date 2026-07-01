@@ -46,13 +46,7 @@ build/
 *.egg-info/
 
 # =====================
-# Conda / local environments
-# =====================
-*.conda
-*.env
-
-# =====================
-# Generated outputs
+# Local outputs
 # =====================
 runs/
 results/

@@ -12,13 +12,19 @@ from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 from net_hole_detector.msg import BoundingBoxArray, Detection3D, Detection3DArray
 
+# ROS node that estimates the 3D position of the detected hole from the masked
+# stereo disparity image, the FastSAM masks, and the YOLO bounding boxes. The
+# node filters invalid disparity pixels, selects a reliable disparity, converts
+# it into depth using the stereo camera model, and publishes the final 
+# Detection3DArray message. A temporal filter is also used to reject sudden 
+# depth jumps between consecutive frames.
+
 
 class StereoDistanceEstimator:
 
     def __init__(self):
         self.bridge = CvBridge()
 
-        
         # Output of stereo_image_proc applied to masked images.
         self.disparity_topic = rospy.get_param("~disparity_topic", "/masked_stereo/disparity")
 
@@ -36,7 +42,7 @@ class StereoDistanceEstimator:
         self.min_bbox_score = float(rospy.get_param("~min_bbox_score", 0.20))
         self.min_points = int(rospy.get_param("~min_points", 20))
 
-        # Mask 63/3.
+        # 63/3 mask.
         self.dilation_kernel_size = int(rospy.get_param("~dilation_kernel_size", 63))
         self.dilation_iterations = int(rospy.get_param("~dilation_iterations", 3))
         self.inner_exclusion_kernel = int(rospy.get_param("~inner_exclusion_kernel", 15))
@@ -50,21 +56,23 @@ class StereoDistanceEstimator:
         self.min_valid_disparity = float(rospy.get_param("~min_valid_disparity", 0.5))
         self.max_valid_disparity = float(rospy.get_param("~max_valid_disparity", 250.0))
 
-       # Selection close to the mask prior.
+        # Selection near the mask prior.
         self.prior_tolerance_px = float(rospy.get_param("~prior_tolerance_px", 3.0))
         self.min_prior_points = int(rospy.get_param("~min_prior_points", 5))
 
-        # IMPORTANT: defined to avoid crash.
+        # Disparity histogram parameters used to select the most consistent depth region.
+        # Disparity values are grouped into bins, and the dominant bin is used only if
+        # it contains enough points to be considered reliable.
         self.disp_bin_width = float(rospy.get_param("~disp_bin_width", 1.0))
         self.min_peak_points = int(rospy.get_param("~min_peak_points", 3))
 
+        # If stereo_image_proc does not provide points near the prior, we use
+        # the dynamic prior.
         
-        # If stereo_image_proc does not give points close to the prior, we use the dynamic prior.
-        # It is not a fixed scale: it changes with each frame.
-
+        # It is not a fixed scale: it changes with every frame.
         self.use_prior_fallback = rospy.get_param("~use_prior_fallback", True)
 
-        # Temporal filter to avoid sudden jumps.
+        # Temporal filter.
         self.max_temporal_jump = float(rospy.get_param("~max_temporal_jump", 0.45))
         self.history_timeout = float(rospy.get_param("~history_timeout", 3.0))
 
@@ -143,8 +151,7 @@ class StereoDistanceEstimator:
         outer = self.dilate(base, self.dilation_kernel_size, self.dilation_iterations)
         inner = self.dilate(base, self.inner_exclusion_kernel, 1)
 
-       
-        # Corona around the hole. The interior/background is avoided.
+        # Ring around the hole. The interior/background is avoided.
         return outer & (~inner)
 
     def bbox_mask(self, bb, width, height):
@@ -196,7 +203,7 @@ class StereoDistanceEstimator:
 
         d_close = d[(d >= low) & (d <= high)]
 
-        # GOOD CASE: stereo_image_proc does have disparities close to the prior.
+        # SUCCESS CASE: stereo_image_proc has disparities near the prior.
         if d_close.size >= self.min_prior_points:
             bins = np.arange(low, high + self.disp_bin_width, self.disp_bin_width)
 
@@ -221,28 +228,30 @@ class StereoDistanceEstimator:
 
                 if candidates:
                     # We choose the bin closest to the prior, not the furthest nor the most populated.
-
                     best = min(candidates, key=lambda c: abs(c["disp"] - prior_disp))
                     return best["disp"], int(best["count"]), "stereo_near_prior_bin"
 
             # If there is no clear bin, we use the median within the strict window.
             return float(np.median(d_close)), int(d_close.size), "stereo_near_prior_median"
 
+        
         # FALLBACK CASE:
-        # If /masked_stereo/disparity does not have any pixel close to the prior,
-        # we do not choose 55, 2, 15, or other absurdities.
+        # If /masked_stereo/disparity does not have any pixel near the prior,
+        # we do not choose 55, 2, 15, or other outliers.
         # We use the dynamic prior from the left-right masks.
-
         if self.use_prior_fallback:
             return float(prior_disp), int(d_close.size), "mask_prior_fallback"
 
         return None, int(d_close.size), "not_enough_near_prior"
 
+        # Reject invalid or unstable depth values before publishing the 3D detection.
+        # This avoids using isolated stereo errors or sudden jumps between frames.
     def temporal_accept(self, z, disp):
         now = rospy.Time.now()
         z = float(z)
         disp = float(disp)
 
+          # Discard Z values outside the valid working range.
         if z < self.z_min_valid or z > self.z_max_valid:
             rospy.logwarn(
                 "[StereoDistanceEstimator] Z out of physical range | Z=%.3f m | disp=%.2f",
@@ -258,7 +267,7 @@ class StereoDistanceEstimator:
             return z
 
         jump = abs(z - self.last_z)
-
+        # Reject sudden depth jumps with respect to the last valid estimate.
         if jump > self.max_temporal_jump:
             rospy.logwarn(
                 "[StereoDistanceEstimator] Z rejected due to jump | raw=%.3f prev=%.3f jump=%.3f disp=%.2f",
@@ -275,6 +284,8 @@ class StereoDistanceEstimator:
 
         return z
 
+     # Main synchronized callback: combines disparity, FastSAM masks and YOLO
+        # bounding boxes to estimate the 3D position of the detected hole.
     def cb(self, disp_msg, left_mask_msg, right_mask_msg, bbox_msg):
         out_msg = Detection3DArray()
         out_msg.header = disp_msg.header
@@ -289,6 +300,7 @@ class StereoDistanceEstimator:
             return
 
         try:
+            # Convert the ROS disparity image into a NumPy array.
             disp = self.bridge.imgmsg_to_cv2(disp_msg.image, desired_encoding="passthrough")
             disp = np.asarray(disp, dtype=np.float32)
         except Exception as e:
@@ -306,7 +318,7 @@ class StereoDistanceEstimator:
             rospy.logerr("[StereoDistanceEstimator] Error reading masks: %s", str(e))
             self.pub_det.publish(out_msg)
             return
-
+        # Use the highest-confidence YOLO detection.
         best_box = max(bbox_msg.boxes, key=lambda b: b.score)
 
         if best_box.score < self.min_bbox_score:
@@ -316,6 +328,8 @@ class StereoDistanceEstimator:
         left_u = self.mask_center_u(left_mask, shape)
         right_u = self.mask_center_u(right_mask, shape)
 
+        # Estimate a prior disparity from the horizontal distance between the
+        # left and right mask centers.
         prior_disp = None
 
         if left_u is not None and right_u is not None:
@@ -324,6 +338,8 @@ class StereoDistanceEstimator:
         left_area = self.valid_area(left_mask, shape)
         box = self.bbox_mask(best_box, width, height)
 
+        # Keep only disparity pixels that are inside both the FastSAM mask area
+        # and the expanded YOLO bounding box, while rejecting invalid disparities.
         valid_mask = (
             left_area &
             box &
@@ -346,6 +362,8 @@ class StereoDistanceEstimator:
 
         d_values = disp[ys, xs]
 
+        # Select the most reliable disparity value, preferably close to the
+        # prior estimated from the stereo masks.
         d_sel, close_count, mode = self.choose_disparity_near_prior(d_values, prior_disp)
 
         rospy.loginfo_throttle(
@@ -363,7 +381,8 @@ class StereoDistanceEstimator:
 
         f = float(disp_msg.f) if abs(float(disp_msg.f)) > 1e-9 else self.fx
         T = abs(float(disp_msg.T)) if abs(float(disp_msg.T)) > 1e-9 else self.baseline_fallback
-
+        
+        # Convert disparity into depth using the stereo camera model: Z = f*T/d.
         z_raw = (f * T) / d_sel
         z_final = self.temporal_accept(z_raw, d_sel)
 
@@ -385,6 +404,7 @@ class StereoDistanceEstimator:
         x_cam = (cx_px - self.cx) * z_final / self.fx
         y_cam = (cy_px - self.cy) * z_final / self.fy
 
+        # Publish the final 3D detection with position and approximate physical size.
         det = Detection3D()
         det.class_id = best_box.class_id
         det.score = best_box.score

@@ -1,2 +1,2 @@
-Header header        # Importante para el timestamp
-BoundingBox[] boxes  # La lista de cajas (puede haber 0, 1 o 20)
+Header header        # Standard ROS header containing timestamp and frame information
+BoundingBox[] boxes  # Array of detected bounding boxes (can be multiple)

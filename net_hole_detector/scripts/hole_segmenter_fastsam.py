@@ -12,21 +12,21 @@ from net_hole_detector.msg import BoundingBoxArray
 
 
 class HoleSegmenterFastSAM:
-    """
-    ROS node that receives:
-        - camera image
-        - YOLO bounding boxes
+    
+    # ROS node that receives:
+    #    - camera image
+    #   - YOLO bounding boxes
 
-    And publishes:
-        - binary mask of the detected hole
-        - debug image with the bounding box and the selected mask
+    # And publishes:
+    #   - binary mask of the detected hole
+    #    - debug image with the bounding box and the selected mask
 
-    Purpose:
-        YOLO provides an approximate localization of the hole in the image.
-        FastSAM segments the scene and generates candidate masks.
-        The FastSAM mask with the highest overlap with the YOLO bounding box is selected
-        as the final segmentation of the detected defect.
-    """
+    # Purpose:
+    #    YOLO provides an approximate localization of the hole in the image.
+    #    FastSAM segments the scene and generates candidate masks.
+    #    The FastSAM mask with the highest overlap with the YOLO bounding box is selected
+    #    as the final segmentation of the detected defect.
+    
 
     def __init__(self):
         rospy.init_node("hole_segmenter_fastsam")
@@ -114,7 +114,7 @@ class HoleSegmenterFastSAM:
             final_mask = np.zeros((height, width), dtype=np.uint8)
             debug_img = cv_img.copy()
 
-            # If YOLO does not detect anything, we publish an empty mask.
+            # If YOLO does not detect anything, we publish empty mask.
             if not bbox_msg.boxes:
                 mask_msg = self.bridge.cv2_to_imgmsg(final_mask, encoding="mono8")
                 mask_msg.header = img_msg.header
@@ -153,7 +153,7 @@ class HoleSegmenterFastSAM:
                     m_uint8 = cv2.resize(m_uint8, (width, height), interpolation=cv2.INTER_NEAREST)
                 resized_masks.append(m_uint8)
 
-            # For each YOLO bbox, we look for the FastSAM mask that fits better.
+            # For each YOLO bbox, we look for the FastSAM mask that fits beter.
             for bb in bbox_msg.boxes:
                 u1 = int((bb.x - bb.w / 2.0) * width)
                 u2 = int((bb.x + bb.w / 2.0) * width)

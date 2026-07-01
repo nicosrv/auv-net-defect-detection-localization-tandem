@@ -1,7 +1,16 @@
 <launch>
+    <!--
+        This launch file starts two FastSAM segmentation nodes, one for the left
+        rectified image and one for the right rectified image. Each node uses the
+        YOLO bounding boxes as prompts to generate a more precise binary mask of
+        the detected hole. The same FastSAM weights are shared by both nodes, while
+        each side publishes its own mask and debug image topics. The LD_PRELOAD
+        line is used to avoid a libffi compatibility issue when running the
+        segmentation node inside the Conda-based YOLO/FastSAM environment.
+    -->
     <arg name="fastsam_weights" default="$(find net_hole_detector)/weights/FastSAM-s.pt"/>
 
-    <!-- FastSAM izquierda -->
+    <!-- Left FastSAM -->
     <node pkg="net_hole_detector"
           type="hole_segmenter_fastsam.py"
           name="hole_segmenter_fastsam_left"
@@ -21,7 +30,7 @@
         <param name="period" value="0.2"/>
     </node>
 
-    <!-- FastSAM derecha -->
+    <!-- Right FastSAM -->
     <node pkg="net_hole_detector"
           type="hole_segmenter_fastsam.py"
           name="hole_segmenter_fastsam_right"

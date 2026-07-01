@@ -1,4 +1,13 @@
 <launch>
+
+    <!--
+      Launches the vertical_inspector controller used to guide the vehicle during
+      the final approach to the detected hole. The parameters define the inspection
+      limits, velocity limits, target distance to the hole, and tolerances used to
+      decide when the vehicle is centered and close enough.The controller uses the
+      2D YOLO bounding boxes for visual alignment and the 3D detections from
+      masked_stereo_z.launch to control the forward approach.
+    -->
   <node name="vertical_inspector" pkg="tandem" type="ri.py" output="screen">
 
       <param name="inspection_width" value="5.0" />
@@ -6,44 +15,42 @@
       <param name="step_down_z" value="0.5" />
       <param name="start_z" value="0.5" />
 
-      <!-- Límites de velocidad -->
+      <!-- Velocity limits -->
       <param name="vy_max" value="0.07" />
       <param name="vz_max" value="0.07" />
 
-      <!-- Visual servoing -->
+      <!-- Visual servoing input -->
       <param name="bbox_topic" value="/net_hole_detector/stereo_left/bounding_boxes" />
       <param name="bbox_timeout" value="3.0" />
 
-      <!-- Z bueeeeeeeena calculada por masked_stereo_z.launch -->
+      <!-- 3D detections computed by masked_stereo_z.launch -->
       <param name="stereo_3d_topic" value="/net_hole_detector/stereo_detections_3d" />
       <param name="stereo_3d_timeout" value="4.0" />
 
-      <!-- Distaaaaaaancia a la que debe quedarse del agujero -->
+      <!-- Safety distance where the robot has to stop whe approaching the net-defect -->
       <param name="target_hole_distance" value="1.00" />
       <param name="distance_tolerance" value="0.01" />
       <param name="kp_forward" value="0.08" />
 
-      <!-- Permite entrar en APPROACH_HOLE con detección 2D aunque todavía no haya Z 3D -->
+      <!-- Allow entering APPROACH_HOLE using 2D detections before a valid 3D estimate is available -->
       <param name="enable_visual_only_approach" value="true" />
       <param name="req_visual_detections" value="3" />
       <param name="visual_detection_timeout" value="3.0" />
       <param name="visual_min_bbox_score" value="0.20" />
 
-      <!-- Tolerancias de centrado en imagen normalizada -->
+      <!-- Centering tolerances in normalized image coordinates -->
       <param name="visual_tol_x" value="0.08" />
       <param name="visual_tol_y" value="0.08" />
 
-      <!-- Ganancias visuales -->
+      <!-- Visual servoing gains -->
       <param name="kp_visual_y" value="0.12" />
       <param name="kp_visual_z" value="0.25" />
 
-      <!-- 
-      +1.0: si el agujero aparece a la derecha, manda vy positivo.
-      Si ves que se aleja del centro en vez de acercarse, cambia a -1.0.
-      -->
+      
+      <!-- Lateral control sign used to align the vehicle with the hole center -->
       <param name="visual_y_sign" value="1.0" />
 
-      <!-- Solo avanza si además de estar centrado visualmente mantiene yaw frontal -->
+      <!-- Move forward only if the vehicle is visually centered and facing the hole -->
       <param name="require_yaw_centered_for_forward" value="true" />
 
   </node>

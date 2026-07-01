@@ -1,4 +1,10 @@
 <launch>
+     <!--
+        Builds the masked stereo image pair by applying the left and right FastSAM
+        masks to the rectified stereo images. The masks are dilated before being
+        applied so that stereo matching keeps enough surrounding texture around
+        the detected hole.
+    -->
     <node pkg="net_hole_detector"
           type="masked_stereo_image_builder.py"
           name="masked_stereo_image_builder"

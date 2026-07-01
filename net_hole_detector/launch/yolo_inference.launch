@@ -1,5 +1,12 @@
 
 <launch>
+        <!--
+        Launches the YOLO inference node for one stereo image stream. The input
+        image topic, model weights, and output detection topic are provided as
+        arguments. This is done so the same launch file can be reused for the left and right
+        cameras. The node publishes bounding boxes that are later used by FastSAM
+        as prompts for mask generation.
+    -->
     <arg name="input_image_topic"/>
     <arg name="weights_path"      default="$(find net_hole_detector)/weights/best_red_neuronal.pt"/>
     <arg name="output_topic"/>
@@ -9,8 +16,6 @@
 
         <param name="confidenceThreshold" value="0.25"/>
         <param name="period" value="0.1"/>
-
-        <rosparam command="load" file="$(find net_hole_detector)/config/UJI_tuning_params.yaml" />  
 
         <remap from="camera_input" to="$(arg input_image_topic)"/>
         <remap from="yolo/detections"  to="$(arg output_topic)"/>
