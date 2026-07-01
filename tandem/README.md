@@ -2,7 +2,7 @@
 
 ROS Noetic package containing the control node used for the final vehicle approach during the net inspection task.
 
-The package launches the `vertical_inspector` controller for the Girona500 AUV. The controller follows an inspection pattern and, when a hole is detected, uses the perception output from `net_hole_detector` to center the vehicle and approach the defect.
+The package launches the `vertical_inspector` controller for the Girona500 AUV. The controller follows an inspection pattern and, when a hole is detected, enters the APPROACH_HOLE mode whe it uses the perception output from `net_hole_detector` to center the vehicle and approach the defect.
 
 ## Package structure
 
