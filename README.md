@@ -8,25 +8,27 @@ The objective of the system is to detect holes in underwater fish-farm nets, seg
 
 The perception pipeline estimates the distance between the stereo camera and the detected defect. This distance is then used by the control node to move the vehicle towards the hole and stop at a predefined safety distance of approximately 1 meter.
 
-
-## Repository structure
-
-auv-net-defect-detection-localization-tandem/
-├── net_hole_detector/   
-├── tandem/             
-├── .gitignore
-└── README.md
-
-Each package (net_hole_detector and tandem) contains its own README file with a more detailed description of its internal structure, launch files, scripts and ROS topics.
-
-## Description
+### Description
 
 First, YOLO detects the defect in the left and right rectified stereo images. The resulting bounding boxes are used as prompts for FastSAM, which generates segmentation masks of the damaged region. These masks are applied to the stereo pair so that disparity is computed mainly around the relevant area.
 
 The disparity information is then used to estimate the 3D position of the defect with respect to the camera. Finally, the 2D detections and the estimated distance to the defect are used to center the vehicle and approach the defect until the desired safety distance is reached.
 
 
-# net_hole_detector directory
+## Repository structure
+
+auv-net-defect-detection-localization-tandem/
+
+├── net_hole_detector/   
+├── tandem/             
+├── .gitignore
+
+└── README.md
+
+Each package (net_hole_detector and tandem) contains its own README file with a more detailed description of its internal structure, launch files, scripts and ROS topics.
+
+
+#### net_hole_detector directory
 
 Contains the perception pipeline used to detect and localize the defect.
 
@@ -47,7 +49,8 @@ More details are provided in:
 net_hole_detector/README.md
 
 
-# tandem directory
+
+#### tandem directory
 
 Contains the control node used for the Girona500 AUV movement and approach behavior.
 
@@ -70,7 +73,7 @@ tandem/README.md
 
 ## Main execution order
 
-The complete system is launched step by step.
+The complete system is launched step by step:
 
 1. Simulation environment
 roslaunch cola2_stonefish girona500_windturbine.launch
