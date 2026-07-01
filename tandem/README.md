@@ -51,19 +51,3 @@ roslaunch tandem girona500.launch
 ```
 
 The launch file defines the inspection limits, velocity limits, visual servoing gains, detection timeouts and safety distance to the net-defect.
-
-## Dynamic reconfigure
-
-Some control parameters can be adjusted at runtime using:
-
-```bash
-rosrun rqt_reconfigure rqt_reconfigure
-```
-
-The available parameters are defined in:
-
-```text
-cfg/VerticalInspector.cfg
-```
-
-This is mainly used to tune the proportional, integral and derivative gains, the velocity limits and the filtering parameters for the Y and Z axes.
