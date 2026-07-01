@@ -1,23 +1,46 @@
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
 
+# ROS / catkin generated files
 build/
 devel/
 install/
 logs/
 .catkin_tools/
+catkin_generated/
 
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# Runtime files
+*.log
 *.bag
+*.bag.active
+
+# Large temporary media files
 *.mp4
 *.avi
 *.mkv
 *.zip
 *.tar.gz
 
+# Editors
 .vscode/
-.DS_Store
+.idea/
+*.swp
+*.swo
+*~
 
+# OS files
+.DS_Store
+Thumbs.db
+
+# Old archived material
 **/legacy_launch/
 **/legacy_scripts/
 **/archive_old_launch/
